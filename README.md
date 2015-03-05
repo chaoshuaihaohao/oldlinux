@@ -1,56 +1,36 @@
 Linux-0.11
 ==========
 
-The old Linux kernel source ver 0.11 which has been tested under modern Linux,  Mac OSX and Windows.
+The old Linux kernel source ver 0.11 run on Qemu of Fedora 21.
 
-##1. Build on Linux
+## Doc
 
-##1.1. Linux Setup
+[Make image](http://my-zhang.github.io/blog/2014/06/28/make-bootable-linux-disk-image-with-grub2/)  
+[Qemu+GDB](http://wwssllabcd.github.io/blog/2012/08/03/compile-linux011/)  
+
+## Pre-requirement
 
 * a linux distribution: debian , ubuntu and mint are recommended
 * some tools: gcc gdb qemu
 * a linux-0.11 hardware image file: hdc-0.11.img, please download it from http://www.oldlinux.org, or http://mirror.lzu.edu.cn/os/oldlinux.org/, ant put it in the root directory.
 
-##1.2. hack linux-0.11
+## Build
+```bash
+    $ make
 
-    $ make help		// get help
-    $ make  		// compile
-    $ make start		// boot it on qemu
-    $ make debug		// debug it via qemu & gdb, you'd start gdb to connect it.
+    $ tar xjf hdc-0.11.img.tar.bz2   <<< get root-image
+    $ make help
+    $ make start    <<< boot it on qemu
+    $ make debug    <<< debug it via qemu & gdb, you'd start gdb to connect it.
 
     $ gdb tools/system
     (gdb) target remote :1234
     (gdb) b main
+    (gdb) br *0x7c00    <<< CS=0x7C00, this is BIOS load the MBR's address, here bios hand over the control to linux-kernel.
+                        <<< So 0x7C00 is the code of bootsec.S
+                        <<< check the value of 0x7DFE and 0x7DFF is 0x55 0xAA or not
+    (gdb) x/16b 0x7DF0
+
     (gdb) c
+```
 
-
-##2. Build on Mac OS X
-
-##2.1. Mac OS X Setup
-
-* install cross compiler gcc and binutils
-* install qemu
-* install gdb. you need download the gdb source and compile it to use gdb because port doesn't provide i386-elf-gdb, or you can use the pre-compiled gdb in the tools directory.
-* a linux-0.11 hardware image file: hdc-0.11.img
-
-#
-    $ sudo port install qemu
-    $ sudo port install i386-elf-binutils i386-elf-gcc
-
-optional
-
-    $ wget ftp://ftp.gnu.org/gnu/gdb/gdb-7.4.tar.bz2
-    $ tar -xzvf gdb-7.4.tar.bz2
-	$ cd gdb-7.4
-	$ ./configure --target=i386-elf
-	$ make
-
-
-##2.2. hack linux-0.11
-
-	same as section 1.2
-
-
-##3. Build on Windows
-
-	todo...
