@@ -1,7 +1,8 @@
 Linux old kernel
 ================
 
-The [old Linux kernel source ver 0.11/0.12](http://www.oldlinux.org) run on linux.
+[The old Linux kernel source ver 0.11/0.12-0.96](http://www.oldlinux.org)  
+[A practical tour to the Linux Kernel](http://bootloader.wikidot.com/linux:kernel:tour)~~
 
 ## Doc
 
