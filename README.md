@@ -18,7 +18,7 @@ The old Linux kernel source ver 0.11 run on Qemu of Fedora 21.
 ```bash
     $ make
 
-    $ tar xjf hdc-0.11.img.tar.bz2   <<< get root-image
+    $ tar xjf hdc-0.11.img.tar.bz2   <<< get root-image filesystem
     $ make help
     $ make start    <<< boot it on qemu
     $ make debug    <<< debug it via qemu & gdb, you'd start gdb to connect it.
