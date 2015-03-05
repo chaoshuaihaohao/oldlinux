@@ -1,7 +1,7 @@
-Linux-0.11
-==========
+Linux old kernel
+================
 
-The [old Linux kernel source ver 0.11](http://www.oldlinux.org) run on Qemu of Fedora 21.
+The [old Linux kernel source ver 0.11/0.12](http://www.oldlinux.org) run on linux.
 
 ## Doc
 
