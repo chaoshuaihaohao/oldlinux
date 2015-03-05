@@ -1,0 +1,2533 @@
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/boot/head.s linux-0.12/boot/head.s
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/boot/head.s	1992-01-11 12:50:17.000000000 +0800
++++ linux-0.12/boot/head.s	2015-02-12 22:02:33.476630095 +0800
+@@ -12,15 +12,15 @@
+  * the page directory.
+  */
+ .text
+-.globl _idt,_gdt,_pg_dir,_tmp_floppy_area
+-_pg_dir:
++.globl idt,gdt,pg_dir,tmp_floppy_area,startup_32
++pg_dir:
+ startup_32:
+ 	movl $0x10,%eax
+ 	mov %ax,%ds
+ 	mov %ax,%es
+ 	mov %ax,%fs
+ 	mov %ax,%gs
+-	lss _stack_start,%esp
++	lss stack_start,%esp
+ 	call setup_idt
+ 	call setup_gdt
+ 	movl $0x10,%eax		# reload all the segment registers
+@@ -28,7 +28,7 @@
+ 	mov %ax,%es		# reloaded in 'setup_gdt'
+ 	mov %ax,%fs
+ 	mov %ax,%gs
+-	lss _stack_start,%esp
++	lss stack_start,%esp
+ 	xorl %eax,%eax
+ 1:	incl %eax		# check that A20 really IS enabled
+ 	movl %eax,0x000000	# loop forever if it isn't
+@@ -60,7 +60,7 @@
+ 	xorl $6,%eax		/* reset MP, set EM */
+ 	movl %eax,%cr0
+ 	ret
+-.align 2
++.align 4
+ 1:	.byte 0xDB,0xE4		/* fsetpm for 287, ignored by 387 */
+ 	ret
+ 
+@@ -81,7 +81,7 @@
+ 	movw %dx,%ax		/* selector = 0x0008 = cs */
+ 	movw $0x8E00,%dx	/* interrupt gate - dpl=0, present */
+ 
+-	lea _idt,%edi
++	lea idt,%edi
+ 	mov $256,%ecx
+ rp_sidt:
+ 	movl %eax,(%edi)
+@@ -129,7 +129,7 @@
+  * reach to a buffer-block. It needs to be aligned, so that it isn't
+  * on a 64kB border.
+  */
+-_tmp_floppy_area:
++tmp_floppy_area:
+ 	.fill 1024,1,0
+ 
+ after_page_tables:
+@@ -137,7 +137,7 @@
+ 	pushl $0
+ 	pushl $0
+ 	pushl $L6		# return address for main, if it decides to.
+-	pushl $_main
++	pushl $main
+ 	jmp setup_paging
+ L6:
+ 	jmp L6			# main should never return here, but
+@@ -146,7 +146,7 @@
+ /* This is the default interrupt "handler" :-) */
+ int_msg:
+ 	.asciz "Unknown interrupt\n\r"
+-.align 2
++.align 4
+ ignore_int:
+ 	pushl %eax
+ 	pushl %ecx
+@@ -159,7 +159,7 @@
+ 	mov %ax,%es
+ 	mov %ax,%fs
+ 	pushl $int_msg
+-	call _printk
++	call printk
+ 	popl %eax
+ 	pop %fs
+ 	pop %es
+@@ -194,22 +194,23 @@
+  * some kind of marker at them (search for "16Mb"), but I
+  * won't guarantee that's all :-( )
+  */
+-.align 2
++.align 4
+ setup_paging:
+ 	movl $1024*5,%ecx		/* 5 pages - pg_dir+4 page tables */
+ 	xorl %eax,%eax
+ 	xorl %edi,%edi			/* pg_dir is at 0x000 */
+ 	cld;rep;stosl
+-	movl $pg0+7,_pg_dir		/* set present bit/user r/w */
+-	movl $pg1+7,_pg_dir+4		/*  --------- " " --------- */
+-	movl $pg2+7,_pg_dir+8		/*  --------- " " --------- */
+-	movl $pg3+7,_pg_dir+12		/*  --------- " " --------- */
++	movl $pg0+7,pg_dir		/* set present bit/user r/w */
++	movl $pg1+7,pg_dir+4		/*  --------- " " --------- */
++	movl $pg2+7,pg_dir+8		/*  --------- " " --------- */
++	movl $pg3+7,pg_dir+12		/*  --------- " " --------- */
+ 	movl $pg3+4092,%edi
+ 	movl $0xfff007,%eax		/*  16Mb - 4096 + 7 (r/w user,p) */
+ 	std
+ 1:	stosl			/* fill pages backwards - more efficient :-) */
+ 	subl $0x1000,%eax
+ 	jge 1b
++    cld
+ 	xorl %eax,%eax		/* pg_dir is at 0x0000 */
+ 	movl %eax,%cr3		/* cr3 - page directory start */
+ 	movl %cr0,%eax
+@@ -217,21 +218,21 @@
+ 	movl %eax,%cr0		/* set paging (PG) bit */
+ 	ret			/* this also flushes prefetch-queue */
+ 
+-.align 2
++.align 4
+ .word 0
+ idt_descr:
+ 	.word 256*8-1		# idt contains 256 entries
+-	.long _idt
+-.align 2
++	.long idt
++.align 4
+ .word 0
+ gdt_descr:
+ 	.word 256*8-1		# so does gdt (not that that's any
+-	.long _gdt		# magic number, but it works for me :^)
++	.long gdt		# magic number, but it works for me :^)
+ 
+-	.align 3
+-_idt:	.fill 256,8,0		# idt is uninitialized
++	.align 8
++idt:	.fill 256,8,0		# idt is uninitialized
+ 
+-_gdt:	.quad 0x0000000000000000	/* NULL descriptor */
++gdt:	.quad 0x0000000000000000	/* NULL descriptor */
+ 	.quad 0x00c09a0000000fff	/* 16Mb */
+ 	.quad 0x00c0920000000fff	/* 16Mb */
+ 	.quad 0x0000000000000000	/* TEMPORARY - don't use */
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/fs/bitmap.c linux-0.12/fs/bitmap.c
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/fs/bitmap.c	1992-01-12 03:57:29.000000000 +0800
++++ linux-0.12/fs/bitmap.c	2015-02-12 21:41:09.336599576 +0800
+@@ -14,7 +14,7 @@
+ __asm__("cld\n\t" \
+ 	"rep\n\t" \
+ 	"stosl" \
+-	::"a" (0),"c" (BLOCK_SIZE/4),"D" ((long) (addr)):"cx","di")
++	::"a" (0),"c" (BLOCK_SIZE/4),"D" ((long) (addr)))
+ 
+ #define set_bit(nr,addr) ({\
+ register int res __asm__("ax"); \
+@@ -41,7 +41,7 @@
+ 	"cmpl $8192,%%ecx\n\t" \
+ 	"jl 1b\n" \
+ 	"3:" \
+-	:"=c" (__res):"c" (0),"S" (addr):"ax","dx","si"); \
++	:"=c" (__res):"c" (0),"S" (addr):"ax","dx"); \
+ __res;})
+ 
+ int free_block(int dev, int block)
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/fs/buffer.c linux-0.12/fs/buffer.c
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/fs/buffer.c	1991-12-07 04:21:00.000000000 +0800
++++ linux-0.12/fs/buffer.c	2015-02-12 21:39:11.504596775 +0800
+@@ -285,7 +285,7 @@
+ 	"rep\n\t" \
+ 	"movsl\n\t" \
+ 	::"c" (BLOCK_SIZE/4),"S" (from),"D" (to) \
+-	:"cx","di","si")
++	)
+ 
+ /*
+  * bread_page reads four buffers into memory at the desired address. It's
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/fs/exec.c linux-0.12/fs/exec.c
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/fs/exec.c	1992-01-14 07:36:33.000000000 +0800
++++ linux-0.12/fs/exec.c	2015-02-12 21:39:38.632597420 +0800
+@@ -159,8 +159,8 @@
+ 				if (from_kmem==2)
+ 					set_fs(old_fs);
+ 				if (!(pag = (char *) page[p/PAGE_SIZE]) &&
+-				    !(pag = (char *) page[p/PAGE_SIZE] =
+-				      (unsigned long *) get_free_page())) 
++				    !(pag = (char *) (page[p/PAGE_SIZE] =
++				      (unsigned long *) get_free_page()))) 
+ 					return 0;
+ 				if (from_kmem==2)
+ 					set_fs(new_fs);
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/fs/Makefile linux-0.12/fs/Makefile
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/fs/Makefile	1992-01-13 03:49:06.000000000 +0800
++++ linux-0.12/fs/Makefile	2015-02-12 21:28:58.812582214 +0800
+@@ -1,9 +1,9 @@
+-AR	=gar
+-AS	=gas
+-CC	=gcc
+-LD	=gld
+-CFLAGS	=-Wall -O -fstrength-reduce -fcombine-regs -fomit-frame-pointer \
+-	-fno-defer-pop -mstring-insns -nostdinc -I../include
++AR	=ar
++AS	=as --32
++CC	=gcc -m32
++LD	=ld -m elf_i386
++CFLAGS	=-g3 -O0 -fstrength-reduce -fno-stack-protector -fomit-frame-pointer \
++	-fno-defer-pop -fno-builtin -nostdinc -I../include -w #-Wall
+ CPP	=gcc -E -nostdinc -I../include
+ 
+ .c.s:
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/fs/namei.c linux-0.12/fs/namei.c
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/fs/namei.c	1992-01-12 12:09:58.000000000 +0800
++++ linux-0.12/fs/namei.c	2015-02-12 21:40:26.192598550 +0800
+@@ -79,7 +79,7 @@
+ 		"setz %%al"
+ 		:"=a" (same)
+ 		:"0" (0),"S" ((long) name),"D" ((long) de->name),"c" (len)
+-		:"cx","di","si");
++		);
+ 	return same;
+ }
+ 
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/.git/COMMIT_EDITMSG linux-0.12/.git/COMMIT_EDITMSG
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/.git/COMMIT_EDITMSG	1970-01-01 08:00:00.000000000 +0800
++++ linux-0.12/.git/COMMIT_EDITMSG	2015-02-12 22:17:40.164651644 +0800
+@@ -0,0 +1 @@
++gcc -O0
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/.git/config linux-0.12/.git/config
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/.git/config	1970-01-01 08:00:00.000000000 +0800
++++ linux-0.12/.git/config	2015-02-12 21:12:02.072558049 +0800
+@@ -0,0 +1,5 @@
++[core]
++	repositoryformatversion = 0
++	filemode = true
++	bare = false
++	logallrefupdates = true
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/.git/description linux-0.12/.git/description
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/.git/description	1970-01-01 08:00:00.000000000 +0800
++++ linux-0.12/.git/description	2015-02-12 21:12:02.068558049 +0800
+@@ -0,0 +1 @@
++Unnamed repository; edit this file 'description' to name the repository.
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/.git/HEAD linux-0.12/.git/HEAD
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/.git/HEAD	1970-01-01 08:00:00.000000000 +0800
++++ linux-0.12/.git/HEAD	2015-02-12 21:12:02.068558049 +0800
+@@ -0,0 +1 @@
++ref: refs/heads/master
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/.git/hooks/applypatch-msg.sample linux-0.12/.git/hooks/applypatch-msg.sample
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/.git/hooks/applypatch-msg.sample	1970-01-01 08:00:00.000000000 +0800
++++ linux-0.12/.git/hooks/applypatch-msg.sample	2015-02-12 21:12:02.068558049 +0800
+@@ -0,0 +1,15 @@
++#!/bin/sh
++#
++# An example hook script to check the commit log message taken by
++# applypatch from an e-mail message.
++#
++# The hook should exit with non-zero status after issuing an
++# appropriate message if it wants to stop the commit.  The hook is
++# allowed to edit the commit message file.
++#
++# To enable this hook, rename this file to "applypatch-msg".
++
++. git-sh-setup
++test -x "$GIT_DIR/hooks/commit-msg" &&
++	exec "$GIT_DIR/hooks/commit-msg" ${1+"$@"}
++:
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/.git/hooks/commit-msg.sample linux-0.12/.git/hooks/commit-msg.sample
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/.git/hooks/commit-msg.sample	1970-01-01 08:00:00.000000000 +0800
++++ linux-0.12/.git/hooks/commit-msg.sample	2015-02-12 21:12:02.068558049 +0800
+@@ -0,0 +1,24 @@
++#!/bin/sh
++#
++# An example hook script to check the commit log message.
++# Called by "git commit" with one argument, the name of the file
++# that has the commit message.  The hook should exit with non-zero
++# status after issuing an appropriate message if it wants to stop the
++# commit.  The hook is allowed to edit the commit message file.
++#
++# To enable this hook, rename this file to "commit-msg".
++
++# Uncomment the below to add a Signed-off-by line to the message.
++# Doing this in a hook is a bad idea in general, but the prepare-commit-msg
++# hook is more suited to it.
++#
++# SOB=$(git var GIT_AUTHOR_IDENT | sed -n 's/^\(.*>\).*$/Signed-off-by: \1/p')
++# grep -qs "^$SOB" "$1" || echo "$SOB" >> "$1"
++
++# This example catches duplicate Signed-off-by lines.
++
++test "" = "$(grep '^Signed-off-by: ' "$1" |
++	 sort | uniq -c | sed -e '/^[ 	]*1[ 	]/d')" || {
++	echo >&2 Duplicate Signed-off-by lines.
++	exit 1
++}
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/.git/hooks/post-update.sample linux-0.12/.git/hooks/post-update.sample
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/.git/hooks/post-update.sample	1970-01-01 08:00:00.000000000 +0800
++++ linux-0.12/.git/hooks/post-update.sample	2015-02-12 21:12:02.068558049 +0800
+@@ -0,0 +1,8 @@
++#!/bin/sh
++#
++# An example hook script to prepare a packed repository for use over
++# dumb transports.
++#
++# To enable this hook, rename this file to "post-update".
++
++exec git update-server-info
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/.git/hooks/pre-applypatch.sample linux-0.12/.git/hooks/pre-applypatch.sample
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/.git/hooks/pre-applypatch.sample	1970-01-01 08:00:00.000000000 +0800
++++ linux-0.12/.git/hooks/pre-applypatch.sample	2015-02-12 21:12:02.068558049 +0800
+@@ -0,0 +1,14 @@
++#!/bin/sh
++#
++# An example hook script to verify what is about to be committed
++# by applypatch from an e-mail message.
++#
++# The hook should exit with non-zero status after issuing an
++# appropriate message if it wants to stop the commit.
++#
++# To enable this hook, rename this file to "pre-applypatch".
++
++. git-sh-setup
++test -x "$GIT_DIR/hooks/pre-commit" &&
++	exec "$GIT_DIR/hooks/pre-commit" ${1+"$@"}
++:
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/.git/hooks/pre-commit.sample linux-0.12/.git/hooks/pre-commit.sample
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/.git/hooks/pre-commit.sample	1970-01-01 08:00:00.000000000 +0800
++++ linux-0.12/.git/hooks/pre-commit.sample	2015-02-12 21:12:02.068558049 +0800
+@@ -0,0 +1,49 @@
++#!/bin/sh
++#
++# An example hook script to verify what is about to be committed.
++# Called by "git commit" with no arguments.  The hook should
++# exit with non-zero status after issuing an appropriate message if
++# it wants to stop the commit.
++#
++# To enable this hook, rename this file to "pre-commit".
++
++if git rev-parse --verify HEAD >/dev/null 2>&1
++then
++	against=HEAD
++else
++	# Initial commit: diff against an empty tree object
++	against=4b825dc642cb6eb9a060e54bf8d69288fbee4904
++fi
++
++# If you want to allow non-ASCII filenames set this variable to true.
++allownonascii=$(git config --bool hooks.allownonascii)
++
++# Redirect output to stderr.
++exec 1>&2
++
++# Cross platform projects tend to avoid non-ASCII filenames; prevent
++# them from being added to the repository. We exploit the fact that the
++# printable range starts at the space character and ends with tilde.
++if [ "$allownonascii" != "true" ] &&
++	# Note that the use of brackets around a tr range is ok here, (it's
++	# even required, for portability to Solaris 10's /usr/bin/tr), since
++	# the square bracket bytes happen to fall in the designated range.
++	test $(git diff --cached --name-only --diff-filter=A -z $against |
++	  LC_ALL=C tr -d '[ -~]\0' | wc -c) != 0
++then
++	cat <<\EOF
++Error: Attempt to add a non-ASCII file name.
++
++This can cause problems if you want to work with people on other platforms.
++
++To be portable it is advisable to rename the file.
++
++If you know what you are doing you can disable this check using:
++
++  git config hooks.allownonascii true
++EOF
++	exit 1
++fi
++
++# If there are whitespace errors, print the offending file names and fail.
++exec git diff-index --check --cached $against --
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/.git/hooks/prepare-commit-msg.sample linux-0.12/.git/hooks/prepare-commit-msg.sample
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/.git/hooks/prepare-commit-msg.sample	1970-01-01 08:00:00.000000000 +0800
++++ linux-0.12/.git/hooks/prepare-commit-msg.sample	2015-02-12 21:12:02.068558049 +0800
+@@ -0,0 +1,36 @@
++#!/bin/sh
++#
++# An example hook script to prepare the commit log message.
++# Called by "git commit" with the name of the file that has the
++# commit message, followed by the description of the commit
++# message's source.  The hook's purpose is to edit the commit
++# message file.  If the hook fails with a non-zero status,
++# the commit is aborted.
++#
++# To enable this hook, rename this file to "prepare-commit-msg".
++
++# This hook includes three examples.  The first comments out the
++# "Conflicts:" part of a merge commit.
++#
++# The second includes the output of "git diff --name-status -r"
++# into the message, just before the "git status" output.  It is
++# commented because it doesn't cope with --amend or with squashed
++# commits.
++#
++# The third example adds a Signed-off-by line to the message, that can
++# still be edited.  This is rarely a good idea.
++
++case "$2,$3" in
++  merge,)
++    /usr/bin/perl -i.bak -ne 's/^/# /, s/^# #/#/ if /^Conflicts/ .. /#/; print' "$1" ;;
++
++# ,|template,)
++#   /usr/bin/perl -i.bak -pe '
++#      print "\n" . `git diff --cached --name-status -r`
++#	 if /^#/ && $first++ == 0' "$1" ;;
++
++  *) ;;
++esac
++
++# SOB=$(git var GIT_AUTHOR_IDENT | sed -n 's/^\(.*>\).*$/Signed-off-by: \1/p')
++# grep -qs "^$SOB" "$1" || echo "$SOB" >> "$1"
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/.git/hooks/pre-push.sample linux-0.12/.git/hooks/pre-push.sample
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/.git/hooks/pre-push.sample	1970-01-01 08:00:00.000000000 +0800
++++ linux-0.12/.git/hooks/pre-push.sample	2015-02-12 21:12:02.068558049 +0800
+@@ -0,0 +1,54 @@
++#!/bin/sh
++
++# An example hook script to verify what is about to be pushed.  Called by "git
++# push" after it has checked the remote status, but before anything has been
++# pushed.  If this script exits with a non-zero status nothing will be pushed.
++#
++# This hook is called with the following parameters:
++#
++# $1 -- Name of the remote to which the push is being done
++# $2 -- URL to which the push is being done
++#
++# If pushing without using a named remote those arguments will be equal.
++#
++# Information about the commits which are being pushed is supplied as lines to
++# the standard input in the form:
++#
++#   <local ref> <local sha1> <remote ref> <remote sha1>
++#
++# This sample shows how to prevent push of commits where the log message starts
++# with "WIP" (work in progress).
++
++remote="$1"
++url="$2"
++
++z40=0000000000000000000000000000000000000000
++
++IFS=' '
++while read local_ref local_sha remote_ref remote_sha
++do
++	if [ "$local_sha" = $z40 ]
++	then
++		# Handle delete
++		:
++	else
++		if [ "$remote_sha" = $z40 ]
++		then
++			# New branch, examine all commits
++			range="$local_sha"
++		else
++			# Update to existing branch, examine new commits
++			range="$remote_sha..$local_sha"
++		fi
++
++		# Check for WIP commit
++		commit=`git rev-list -n 1 --grep '^WIP' "$range"`
++		if [ -n "$commit" ]
++		then
++			echo "Found WIP commit in $local_ref, not pushing"
++			exit 1
++		fi
++	fi
++done
++
++exit 0
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/.git/hooks/pre-rebase.sample linux-0.12/.git/hooks/pre-rebase.sample
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/.git/hooks/pre-rebase.sample	1970-01-01 08:00:00.000000000 +0800
++++ linux-0.12/.git/hooks/pre-rebase.sample	2015-02-12 21:12:02.068558049 +0800
+@@ -0,0 +1,169 @@
++#!/bin/sh
++#
++# Copyright (c) 2006, 2008 Junio C Hamano
++#
++# The "pre-rebase" hook is run just before "git rebase" starts doing
++# its job, and can prevent the command from running by exiting with
++# non-zero status.
++#
++# The hook is called with the following parameters:
++#
++# $1 -- the upstream the series was forked from.
++# $2 -- the branch being rebased (or empty when rebasing the current branch).
++#
++# This sample shows how to prevent topic branches that are already
++# merged to 'next' branch from getting rebased, because allowing it
++# would result in rebasing already published history.
++
++publish=next
++basebranch="$1"
++if test "$#" = 2
++then
++	topic="refs/heads/$2"
++else
++	topic=`git symbolic-ref HEAD` ||
++	exit 0 ;# we do not interrupt rebasing detached HEAD
++fi
++
++case "$topic" in
++refs/heads/??/*)
++	;;
++*)
++	exit 0 ;# we do not interrupt others.
++	;;
++esac
++
++# Now we are dealing with a topic branch being rebased
++# on top of master.  Is it OK to rebase it?
++
++# Does the topic really exist?
++git show-ref -q "$topic" || {
++	echo >&2 "No such branch $topic"
++	exit 1
++}
++
++# Is topic fully merged to master?
++not_in_master=`git rev-list --pretty=oneline ^master "$topic"`
++if test -z "$not_in_master"
++then
++	echo >&2 "$topic is fully merged to master; better remove it."
++	exit 1 ;# we could allow it, but there is no point.
++fi
++
++# Is topic ever merged to next?  If so you should not be rebasing it.
++only_next_1=`git rev-list ^master "^$topic" ${publish} | sort`
++only_next_2=`git rev-list ^master           ${publish} | sort`
++if test "$only_next_1" = "$only_next_2"
++then
++	not_in_topic=`git rev-list "^$topic" master`
++	if test -z "$not_in_topic"
++	then
++		echo >&2 "$topic is already up-to-date with master"
++		exit 1 ;# we could allow it, but there is no point.
++	else
++		exit 0
++	fi
++else
++	not_in_next=`git rev-list --pretty=oneline ^${publish} "$topic"`
++	/usr/bin/perl -e '
++		my $topic = $ARGV[0];
++		my $msg = "* $topic has commits already merged to public branch:\n";
++		my (%not_in_next) = map {
++			/^([0-9a-f]+) /;
++			($1 => 1);
++		} split(/\n/, $ARGV[1]);
++		for my $elem (map {
++				/^([0-9a-f]+) (.*)$/;
++				[$1 => $2];
++			} split(/\n/, $ARGV[2])) {
++			if (!exists $not_in_next{$elem->[0]}) {
++				if ($msg) {
++					print STDERR $msg;
++					undef $msg;
++				}
++				print STDERR " $elem->[1]\n";
++			}
++		}
++	' "$topic" "$not_in_next" "$not_in_master"
++	exit 1
++fi
++
++<<\DOC_END
++
++This sample hook safeguards topic branches that have been
++published from being rewound.
++
++The workflow assumed here is:
++
++ * Once a topic branch forks from "master", "master" is never
++   merged into it again (either directly or indirectly).
++
++ * Once a topic branch is fully cooked and merged into "master",
++   it is deleted.  If you need to build on top of it to correct
++   earlier mistakes, a new topic branch is created by forking at
++   the tip of the "master".  This is not strictly necessary, but
++   it makes it easier to keep your history simple.
++
++ * Whenever you need to test or publish your changes to topic
++   branches, merge them into "next" branch.
++
++The script, being an example, hardcodes the publish branch name
++to be "next", but it is trivial to make it configurable via
++$GIT_DIR/config mechanism.
++
++With this workflow, you would want to know:
++
++(1) ... if a topic branch has ever been merged to "next".  Young
++    topic branches can have stupid mistakes you would rather
++    clean up before publishing, and things that have not been
++    merged into other branches can be easily rebased without
++    affecting other people.  But once it is published, you would
++    not want to rewind it.
++
++(2) ... if a topic branch has been fully merged to "master".
++    Then you can delete it.  More importantly, you should not
++    build on top of it -- other people may already want to
++    change things related to the topic as patches against your
++    "master", so if you need further changes, it is better to
++    fork the topic (perhaps with the same name) afresh from the
++    tip of "master".
++
++Let's look at this example:
++
++		   o---o---o---o---o---o---o---o---o---o "next"
++		  /       /           /           /
++		 /   a---a---b A     /           /
++		/   /               /           /
++	       /   /   c---c---c---c B         /
++	      /   /   /             \         /
++	     /   /   /   b---b C     \       /
++	    /   /   /   /             \     /
++    ---o---o---o---o---o---o---o---o---o---o---o "master"
++
++
++A, B and C are topic branches.
++
++ * A has one fix since it was merged up to "next".
++
++ * B has finished.  It has been fully merged up to "master" and "next",
++   and is ready to be deleted.
++
++ * C has not merged to "next" at all.
++
++We would want to allow C to be rebased, refuse A, and encourage
++B to be deleted.
++
++To compute (1):
++
++	git rev-list ^master ^topic next
++	git rev-list ^master        next
++
++	if these match, topic has not merged in next at all.
++
++To compute (2):
++
++	git rev-list master..topic
++
++	if this is empty, it is fully merged to "master".
++
++DOC_END
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/.git/hooks/update.sample linux-0.12/.git/hooks/update.sample
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/.git/hooks/update.sample	1970-01-01 08:00:00.000000000 +0800
++++ linux-0.12/.git/hooks/update.sample	2015-02-12 21:12:02.068558049 +0800
+@@ -0,0 +1,128 @@
++#!/bin/sh
++#
++# An example hook script to blocks unannotated tags from entering.
++# Called by "git receive-pack" with arguments: refname sha1-old sha1-new
++#
++# To enable this hook, rename this file to "update".
++#
++# Config
++# ------
++# hooks.allowunannotated
++#   This boolean sets whether unannotated tags will be allowed into the
++#   repository.  By default they won't be.
++# hooks.allowdeletetag
++#   This boolean sets whether deleting tags will be allowed in the
++#   repository.  By default they won't be.
++# hooks.allowmodifytag
++#   This boolean sets whether a tag may be modified after creation. By default
++#   it won't be.
++# hooks.allowdeletebranch
++#   This boolean sets whether deleting branches will be allowed in the
++#   repository.  By default they won't be.
++# hooks.denycreatebranch
++#   This boolean sets whether remotely creating branches will be denied
++#   in the repository.  By default this is allowed.
++#
++
++# --- Command line
++refname="$1"
++oldrev="$2"
++newrev="$3"
++
++# --- Safety check
++if [ -z "$GIT_DIR" ]; then
++	echo "Don't run this script from the command line." >&2
++	echo " (if you want, you could supply GIT_DIR then run" >&2
++	echo "  $0 <ref> <oldrev> <newrev>)" >&2
++	exit 1
++fi
++
++if [ -z "$refname" -o -z "$oldrev" -o -z "$newrev" ]; then
++	echo "usage: $0 <ref> <oldrev> <newrev>" >&2
++	exit 1
++fi
++
++# --- Config
++allowunannotated=$(git config --bool hooks.allowunannotated)
++allowdeletebranch=$(git config --bool hooks.allowdeletebranch)
++denycreatebranch=$(git config --bool hooks.denycreatebranch)
++allowdeletetag=$(git config --bool hooks.allowdeletetag)
++allowmodifytag=$(git config --bool hooks.allowmodifytag)
++
++# check for no description
++projectdesc=$(sed -e '1q' "$GIT_DIR/description")
++case "$projectdesc" in
++"Unnamed repository"* | "")
++	echo "*** Project description file hasn't been set" >&2
++	exit 1
++	;;
++esac
++
++# --- Check types
++# if $newrev is 0000...0000, it's a commit to delete a ref.
++zero="0000000000000000000000000000000000000000"
++if [ "$newrev" = "$zero" ]; then
++	newrev_type=delete
++else
++	newrev_type=$(git cat-file -t $newrev)
++fi
++
++case "$refname","$newrev_type" in
++	refs/tags/*,commit)
++		# un-annotated tag
++		short_refname=${refname##refs/tags/}
++		if [ "$allowunannotated" != "true" ]; then
++			echo "*** The un-annotated tag, $short_refname, is not allowed in this repository" >&2
++			echo "*** Use 'git tag [ -a | -s ]' for tags you want to propagate." >&2
++			exit 1
++		fi
++		;;
++	refs/tags/*,delete)
++		# delete tag
++		if [ "$allowdeletetag" != "true" ]; then
++			echo "*** Deleting a tag is not allowed in this repository" >&2
++			exit 1
++		fi
++		;;
++	refs/tags/*,tag)
++		# annotated tag
++		if [ "$allowmodifytag" != "true" ] && git rev-parse $refname > /dev/null 2>&1
++		then
++			echo "*** Tag '$refname' already exists." >&2
++			echo "*** Modifying a tag is not allowed in this repository." >&2
++			exit 1
++		fi
++		;;
++	refs/heads/*,commit)
++		# branch
++		if [ "$oldrev" = "$zero" -a "$denycreatebranch" = "true" ]; then
++			echo "*** Creating a branch is not allowed in this repository" >&2
++			exit 1
++		fi
++		;;
++	refs/heads/*,delete)
++		# delete branch
++		if [ "$allowdeletebranch" != "true" ]; then
++			echo "*** Deleting a branch is not allowed in this repository" >&2
++			exit 1
++		fi
++		;;
++	refs/remotes/*,commit)
++		# tracking branch
++		;;
++	refs/remotes/*,delete)
++		# delete tracking branch
++		if [ "$allowdeletebranch" != "true" ]; then
++			echo "*** Deleting a tracking branch is not allowed in this repository" >&2
++			exit 1
++		fi
++		;;
++	*)
++		# Anything else (is there anything else?)
++		echo "*** Update hook: unknown type of update to ref $refname of type $newrev_type" >&2
++		exit 1
++		;;
++esac
++
++# --- Finished
++exit 0
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/index å’Œ linux-0.12/.git/index ä¸åŒ
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/.git/info/exclude linux-0.12/.git/info/exclude
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/.git/info/exclude	1970-01-01 08:00:00.000000000 +0800
++++ linux-0.12/.git/info/exclude	2015-02-12 21:12:02.068558049 +0800
+@@ -0,0 +1,6 @@
++# git ls-files --others --exclude-from=.git/info/exclude
++# Lines that start with '#' are comments.
++# For a project mostly in C, the following would be a good set of
++# exclude patterns (uncomment them if you want to use them):
++# *.[oa]
++# *~
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/.git/logs/HEAD linux-0.12/.git/logs/HEAD
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/.git/logs/HEAD	1970-01-01 08:00:00.000000000 +0800
++++ linux-0.12/.git/logs/HEAD	2015-02-12 22:17:40.168651644 +0800
+@@ -0,0 +1,2 @@
++0000000000000000000000000000000000000000 56009d7012610c5a22d59de64e4305676ce95cef weizi1994 <740232441@qq.com> 1423746754 +0800	commit (initial): Initial linux-0.12 source file
++56009d7012610c5a22d59de64e4305676ce95cef 20f503f9a7bc8179dd24669d36a07301b7c5cb41 weizi1994 <740232441@qq.com> 1423750660 +0800	commit: gcc -O0
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/.git/logs/refs/heads/master linux-0.12/.git/logs/refs/heads/master
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/.git/logs/refs/heads/master	1970-01-01 08:00:00.000000000 +0800
++++ linux-0.12/.git/logs/refs/heads/master	2015-02-12 22:17:40.168651644 +0800
+@@ -0,0 +1,2 @@
++0000000000000000000000000000000000000000 56009d7012610c5a22d59de64e4305676ce95cef weizi1994 <740232441@qq.com> 1423746754 +0800	commit (initial): Initial linux-0.12 source file
++56009d7012610c5a22d59de64e4305676ce95cef 20f503f9a7bc8179dd24669d36a07301b7c5cb41 weizi1994 <740232441@qq.com> 1423750660 +0800	commit: gcc -O0
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/01/355af4a7ed9961a61f1ba894a6cf1ac696f10c å’Œ linux-0.12/.git/objects/01/355af4a7ed9961a61f1ba894a6cf1ac696f10c ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/01/c02c6a7b2662915d4e01ffb0f9fbf692490b8c å’Œ linux-0.12/.git/objects/01/c02c6a7b2662915d4e01ffb0f9fbf692490b8c ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/03/4fecaf1a724cf3e87935ad4938accb2a70e22c å’Œ linux-0.12/.git/objects/03/4fecaf1a724cf3e87935ad4938accb2a70e22c ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/05/2e764ab525d45eac24e7536807b6b18bafa837 å’Œ linux-0.12/.git/objects/05/2e764ab525d45eac24e7536807b6b18bafa837 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/05/48d8ef2bc693653997a8affb650566e6fc3a45 å’Œ linux-0.12/.git/objects/05/48d8ef2bc693653997a8affb650566e6fc3a45 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/05/a6d9cfa1a7f55da6c91df3555244b364c87b0a å’Œ linux-0.12/.git/objects/05/a6d9cfa1a7f55da6c91df3555244b364c87b0a ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/06/007c49a62c27408bdf6b3fdb7e5c0465e6a525 å’Œ linux-0.12/.git/objects/06/007c49a62c27408bdf6b3fdb7e5c0465e6a525 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/06/b910e5a9b7683c973312ec243086c9b6bb6838 å’Œ linux-0.12/.git/objects/06/b910e5a9b7683c973312ec243086c9b6bb6838 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/09/3f96c86807a36b8ae2ec6d783e172cbd4e6bbf å’Œ linux-0.12/.git/objects/09/3f96c86807a36b8ae2ec6d783e172cbd4e6bbf ä¸åŒ
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/0b/3fcc19aad0798d7925175227f34f8ded29f48f linux-0.12/.git/objects/0b/3fcc19aad0798d7925175227f34f8ded29f48f
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/0b/3fcc19aad0798d7925175227f34f8ded29f48f	1970-01-01 08:00:00.000000000 +0800
++++ linux-0.12/.git/objects/0b/3fcc19aad0798d7925175227f34f8ded29f48f	2015-02-12 22:16:57.292650625 +0800
+@@ -0,0 +1,7 @@
++xÅUÁnÛ0İ5ú
++¢[¶¶p›¦°uvÚ­½²E'^eÉ“ä,ıû‘RœX±ãv0@‘ï‘EÒ¥¶%ÜŞ}¸}µ¸p	 ÓïOèê…ôíµ'u´œ»€åııàa<<Z·•Z±}!D¢GTÖÙaƒ íï+[Ô¤VµuĞZ`#ú-id¯ƒ¿æ\ã
++wv¡±O(£4*(Ÿ£³¶-À[e «yGnĞá5<nÎêF#HMDôp¾±Ö½ÖÏPwıÕÁ»Õ#We
++Ñ§L8h{Ê±Dèñ~/·¨½u¨RD
++s(ô©×kª«ÕlE7rÎºBaÙ¯Ó6EcÂ]a·èj*NQÚŞ(OJªf£V¶Ûö¥ÆU¬OQYÊ¤BOáW×-š°b®7~ğğøğPcÃª£¤	^ø «§<ÖhĞIM °â²g¡Rêûµ¼+Ø£"TJwmb"Õ«'!Æ×ı$f]ï7Ş(»„±© +î‚íªÍZÃå®8Ÿ£ï.æËİQ®F²ËÍãGrÙ%=Ì©Ec.ã Õ{‰ò»™Í^ÃY¼hlÑ31Ó(áıû”M1Ç,…ní–y»åÍŞH
++
++³+b¨Ã£°’ZÃ%ßTÌ¤Räã#9ğœ¨í`sb!¦ÉBÌÜv\x$Æ[&Qñ…÷"×$‰±TIŒL"Gmz'îÄì¸#¹üVl³ŸmÙK	A­›‘è<‰cg“Èa2ô œd¤aÉğI5‰&Âvã¨dıeÔ27ÁMúæ's2('qîğÔ8;ëJ˜K]Ğ'f¶éDíøı&ö[É­yK­ùÒ~Kv~Öe-–ŸFÒØÇWÂì»ˆû…áãkÆ)¡m¦CzqĞGÁS¾,î·ãÔÁç«/q	B9,F¾­{×Óø/V|–§y²ñl]{š¬ıÊK•m	.fÜ´å[‚‡-Á‡ñ–àşÏ-1L	ıN²7éSƒßYˆ‰ÿNF°O8ÿ¨rúØrJ<ı™eìSó©‹?µŒÿÂvJşˆŞ÷
+\ æ–‡ä»¶å°¾æ²¡æœ‰ newline å­—ç¬¦
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/0c/50eaa86ba6a09fe4bfb3f752d731c9e3332013 å’Œ linux-0.12/.git/objects/0c/50eaa86ba6a09fe4bfb3f752d731c9e3332013 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/0c/62c826d4968678a42680880f4267c4c9805f1c å’Œ linux-0.12/.git/objects/0c/62c826d4968678a42680880f4267c4c9805f1c ä¸åŒ
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/0e/6aef8b4d5286dc7b1dbd32ef83c678c51873c1 linux-0.12/.git/objects/0e/6aef8b4d5286dc7b1dbd32ef83c678c51873c1
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/0e/6aef8b4d5286dc7b1dbd32ef83c678c51873c1	1970-01-01 08:00:00.000000000 +0800
++++ linux-0.12/.git/objects/0e/6aef8b4d5286dc7b1dbd32ef83c678c51873c1	2015-02-12 21:12:05.564558132 +0800
+@@ -0,0 +1,3 @@
++x]M‚@EÛ6¿bÀMPä&Â\.Ò2êô)3c$ÑoF"Âå=Ü{9iÕ¤ÔŞÚ‹˜CA“è%ç8
++İÀK|biÆÆ˜X³ªËîe/×ªoA®ÊÃ·L°Ú`"•è2E;%‘Õ@_dš•LP½5ù¶»;_‚M
++Ü‹Šb£qôÂåæ×P“ÿ›Éü{©YVjë¼Bà©@ å¨Ìûlä³0fiWÌu×ÌyA>L±\
+\ æ–‡ä»¶å°¾æ²¡æœ‰ newline å­—ç¬¦
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/0e/6d43b013b1f2cad2f4b4f27b325705948e4072 å’Œ linux-0.12/.git/objects/0e/6d43b013b1f2cad2f4b4f27b325705948e4072 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/11/82e635f400205a6b182c6ff76d4a6aefa64ab1 å’Œ linux-0.12/.git/objects/11/82e635f400205a6b182c6ff76d4a6aefa64ab1 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/16/934d59e2d56f709d00cb6ebfdf9bf6515ba44b å’Œ linux-0.12/.git/objects/16/934d59e2d56f709d00cb6ebfdf9bf6515ba44b ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/18/847971b23985f14349e300cb74b56e5537594d å’Œ linux-0.12/.git/objects/18/847971b23985f14349e300cb74b56e5537594d ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/19/e5d56ec6fb9733ddc0ef3cb97cadb817143b0e å’Œ linux-0.12/.git/objects/19/e5d56ec6fb9733ddc0ef3cb97cadb817143b0e ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/1b/0fe317a78169ba3965293a1df69fbaffb836fc å’Œ linux-0.12/.git/objects/1b/0fe317a78169ba3965293a1df69fbaffb836fc ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/1b/5ba836462ea65516b68126de61f66622d58a10 å’Œ linux-0.12/.git/objects/1b/5ba836462ea65516b68126de61f66622d58a10 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/1c/b2861d84884f5e891b12885a94795a6a49e562 å’Œ linux-0.12/.git/objects/1c/b2861d84884f5e891b12885a94795a6a49e562 ä¸åŒ
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/1d/e404abb2d03b4a682008dfdf5b9abf4d2dd7ed linux-0.12/.git/objects/1d/e404abb2d03b4a682008dfdf5b9abf4d2dd7ed
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/1d/e404abb2d03b4a682008dfdf5b9abf4d2dd7ed	1970-01-01 08:00:00.000000000 +0800
++++ linux-0.12/.git/objects/1d/e404abb2d03b4a682008dfdf5b9abf4d2dd7ed	2015-02-12 21:12:05.576558133 +0800
+@@ -0,0 +1,4 @@
++xm±‚0†]éS\p)$Ğ .Dd1jLLto
++-ÒP i¨ïnÁÅÁñşïîû/Sm«õfA|>(Ùô#©„n„"5ëJ"´nu˜[8q¼÷ Šã.vÑÀ½ÕSÜXDZÊ&W=ùh˜
++Ëô7üºM^
++>“¡•¦:wàiöĞ9”2SSŠİÂúÄèz[äÈ°b¦£3íàt:õãü‰ƒôû¼v%	¾OÇë!ˆ¬é>­*Lb
+\ æ–‡ä»¶å°¾æ²¡æœ‰ newline å­—ç¬¦
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/1d/f6c2317d7b89a8fb0d88a4717c4ec349583fa9 å’Œ linux-0.12/.git/objects/1d/f6c2317d7b89a8fb0d88a4717c4ec349583fa9 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/20/c1c9bf0637cd3ba3d68f6b457a10dd1242b89b å’Œ linux-0.12/.git/objects/20/c1c9bf0637cd3ba3d68f6b457a10dd1242b89b ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/20/f503f9a7bc8179dd24669d36a07301b7c5cb41 å’Œ linux-0.12/.git/objects/20/f503f9a7bc8179dd24669d36a07301b7c5cb41 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/24/c84efcc8d2a15fda7728ff9008c4a0141d761b å’Œ linux-0.12/.git/objects/24/c84efcc8d2a15fda7728ff9008c4a0141d761b ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/28/15c16aeeb578592cfdb17bd69f95eb1311b4d0 å’Œ linux-0.12/.git/objects/28/15c16aeeb578592cfdb17bd69f95eb1311b4d0 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/2a/1c8be2c263487fa695dcb6309198943c1bce21 å’Œ linux-0.12/.git/objects/2a/1c8be2c263487fa695dcb6309198943c1bce21 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/32/7259b1dd3e13c36427fc19dd9da96dfda255b4 å’Œ linux-0.12/.git/objects/32/7259b1dd3e13c36427fc19dd9da96dfda255b4 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/32/bc19d43b61e8a40e52d98827674173d6ba0c30 å’Œ linux-0.12/.git/objects/32/bc19d43b61e8a40e52d98827674173d6ba0c30 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/32/d2efb0994eb78dad21be00a4acf5f88a008697 å’Œ linux-0.12/.git/objects/32/d2efb0994eb78dad21be00a4acf5f88a008697 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/34/1274acde8eb3487d54653274f90fe3217d4dd8 å’Œ linux-0.12/.git/objects/34/1274acde8eb3487d54653274f90fe3217d4dd8 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/37/303cd3d365af109138abbfa9e3a3635da8678f å’Œ linux-0.12/.git/objects/37/303cd3d365af109138abbfa9e3a3635da8678f ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/38/1995bde3d97bcf8b9ee1e8e6e65bd2c2d6aba9 å’Œ linux-0.12/.git/objects/38/1995bde3d97bcf8b9ee1e8e6e65bd2c2d6aba9 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/38/ea99d4cff4cb037a8581a9de08faea9cbdd18a å’Œ linux-0.12/.git/objects/38/ea99d4cff4cb037a8581a9de08faea9cbdd18a ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/3b/ccac08a38a8b136ac4b88edb33c8eeb772cb09 å’Œ linux-0.12/.git/objects/3b/ccac08a38a8b136ac4b88edb33c8eeb772cb09 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/3c/2937b6b8fa00ae7068cdb3fb9c4831e9fdc841 å’Œ linux-0.12/.git/objects/3c/2937b6b8fa00ae7068cdb3fb9c4831e9fdc841 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/3c/43d4ca272f9d559d6172f28f5e6af4e83e5c5d å’Œ linux-0.12/.git/objects/3c/43d4ca272f9d559d6172f28f5e6af4e83e5c5d ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/3e/67974c6994f5e351dcd47892600d27af494ed8 å’Œ linux-0.12/.git/objects/3e/67974c6994f5e351dcd47892600d27af494ed8 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/3f/5ab52863a6bf85c7d48cd89342e9f7799f47bd å’Œ linux-0.12/.git/objects/3f/5ab52863a6bf85c7d48cd89342e9f7799f47bd ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/42/3ea031a72d203480409812c6c575efa6e83f46 å’Œ linux-0.12/.git/objects/42/3ea031a72d203480409812c6c575efa6e83f46 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/42/723a76d6a25b69a0306d3c65262ac752218f69 å’Œ linux-0.12/.git/objects/42/723a76d6a25b69a0306d3c65262ac752218f69 ä¸åŒ
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/43/407dc75d0e9ff45987986ae2d5c3fb68a28d85 linux-0.12/.git/objects/43/407dc75d0e9ff45987986ae2d5c3fb68a28d85
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/43/407dc75d0e9ff45987986ae2d5c3fb68a28d85	1970-01-01 08:00:00.000000000 +0800
++++ linux-0.12/.git/objects/43/407dc75d0e9ff45987986ae2d5c3fb68a28d85	2015-02-12 21:12:05.572558132 +0800
+@@ -0,0 +1,6 @@
++x“]kÛ0†wkÿŠ“2;‹c²°’Õ7¥û€z‘^
++A‘ObYr%9iİoß‘’†f´ìÂ Ÿé9¯^Í¥Ãpøyô&ïÅĞBµ÷ù
++B™óÊÌJ³Î·pJ‡Šä2…áùù`Bµ¦Ú¬™,-%ó8ÛDO¦•°Pë²•¢n$Ö¨œW!P,ZÅĞÊ÷Gk-J¨)<Ûá0±Î´Ü£À~Ùƒ»[LÇ‡rûÚr¢{+—m‰ğe7'm<¨ŠgaË+,ÌÖ¹İZ‡õó¸Ğ>[Çœà íFñh\7Û“ƒ,Œ®ûpjD§ÓøwñŠàã86• õ’oÉ
++ëtÓ`	İ.t®~^O%»xĞlv—¦@Í‘X@òõf2IœÎ
++ƒ¬<dS¹V%3Û4¥®(šSíjì—|æ4M WXÒ>¤z+G7şç¾oWÓËïÇ}J¯o|†÷Ÿø&OÆ[cÈ4ŒX*&¡¡¹Ôœ84tĞIœ[á¬m’î‘YÑÍgRXG {[B°¢Ñ-á#,‘\È™”¤ä¦B\$„ŠYhZV×è*¡–t©N{÷{×îeö6ÀÄ%pgh¡|›Ó¡Î¡¿,øô„{çMV²5h•Ç¯ñ;y4¸@¸ğœZÇæ’®!Š&”,
++¥Ğ¹€^¼ÆPÏ*9›³İ£ºU·æÌ_J‹>ÿèNÚ±OßûÑ§Zë…wõ_XÿÅò‡¼„•í±şŠa~º
+\ æ–‡ä»¶å°¾æ²¡æœ‰ newline å­—ç¬¦
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/44/57420dc09dac5c59910e51b8326ef920feae57 linux-0.12/.git/objects/44/57420dc09dac5c59910e51b8326ef920feae57
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/44/57420dc09dac5c59910e51b8326ef920feae57	1970-01-01 08:00:00.000000000 +0800
++++ linux-0.12/.git/objects/44/57420dc09dac5c59910e51b8326ef920feae57	2015-02-12 22:16:57.292650625 +0800
+@@ -0,0 +1,2 @@
++xm‘MOÃ0†¹²_á•ÉT†„¸°©7¸Â‘ª´uÛˆ|TqZ4!ş;N;†89ym?¯TÆWpÿpwq»YÁàùåğ´^¯Á¢­‡£hbN¡ÎE4Z$h¨@*œVhTT@ØYtq‡^ÓŒé<¶>€2Ş184Ğ®Ú;± N:ªÆZ*Œ¯OÈ|¡°ÍhŒÌÙ>Q¨é~Sa¯&í:	ÁwAÙ³Á™3Ë˜ÉH.S‚¦´+(¨Ænæ+wüCØ«u¯\‡ËRiwdŸ‰ÑC£t:2Ë]s©
++ØfË®·««[íğ¿wŸğ¶š¼nø½ËÀ¬"aãÕ²TdËDV›fpØ[?Q•qêr·Ë3Âx×I‘¥Ì³×_‰¿))õYá¤L­rfsGŠ_rõj6
+\ æ–‡ä»¶å°¾æ²¡æœ‰ newline å­—ç¬¦
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/46/2556d5be45971538f7174ce5e5078ed1503123 å’Œ linux-0.12/.git/objects/46/2556d5be45971538f7174ce5e5078ed1503123 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/48/2420d126a0c245cd0fa1c3b9890ff51d9b779e å’Œ linux-0.12/.git/objects/48/2420d126a0c245cd0fa1c3b9890ff51d9b779e ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/4a/9ab8054d649d20e28e360dba71ef760189428e å’Œ linux-0.12/.git/objects/4a/9ab8054d649d20e28e360dba71ef760189428e ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/4b/0a98e7be4c1f3ae25be85a086791fd4000aa5d å’Œ linux-0.12/.git/objects/4b/0a98e7be4c1f3ae25be85a086791fd4000aa5d ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/4c/076bee33e3a6f3d35a178d5358bc7ff1907bc4 å’Œ linux-0.12/.git/objects/4c/076bee33e3a6f3d35a178d5358bc7ff1907bc4 ä¸åŒ
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/4f/1dfac088ab3e8034d4f35cf402b37711287321 linux-0.12/.git/objects/4f/1dfac088ab3e8034d4f35cf402b37711287321
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/4f/1dfac088ab3e8034d4f35cf402b37711287321	1970-01-01 08:00:00.000000000 +0800
++++ linux-0.12/.git/objects/4f/1dfac088ab3e8034d4f35cf402b37711287321	2015-02-12 21:12:05.576558133 +0800
+@@ -0,0 +1,4 @@
++xRMoÛ0İÕú\Šrà8òÚ¡ÍÒäÒÓ€w!Ùò"L–In½-ío%·É>zÚ"%t/`Í®Ş¬ •ÆÕ7iÔ«ûıªî»·²¨±ô.ƒr½.áB|îí=×ÃÒŠ‰ÄËîĞ[n¿ƒ•\ÃÄ \oÀöƒWF>£/”©õĞH¸Æ†y•ì†b¿#ä¢‘-B¡Ö’Ûên¤Ğ—7×…{h İÂ¯Ş3–â<÷ª†û^5`zÛq­~HDTqşxF~’D
++¶À—;9z#ñ¯Û¶İLe§¾šW7Œ±AHô-Å~ÇcàYÈœüN¹Ä&‰•~°£G’<ì•–@¤iì‚‚¦Nµ\tUq×Uñ¦Ñ0gùœÁxSã£Ìçå1É‡ÙÖÎ ÎÏòS,²©ÆÎ¥r
++Qİ4ÿOy
++İGB¢k­wÖ½qşµíœÁƒó=[ YÁÙ÷T„¡Á)QD›D!‚[¢x1ıyñˆxÉÁ-öpÒWwŒFá µ“˜Œ¹Ë;	Æ?õŠ`gë2Çÿö÷"˜¿ÀyMä‡&TÌOúà^gœn´xšò<Pä)º¢[1<ÉşSOú¢ê(1,øù§,
+\ æ–‡ä»¶å°¾æ²¡æœ‰ newline å­—ç¬¦
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/50/aca2eebcd5dba932805c0a97a0b02481e96fcf å’Œ linux-0.12/.git/objects/50/aca2eebcd5dba932805c0a97a0b02481e96fcf ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/51/1a1c8116ccc7d840a3a4a88d9a29114ffc9377 å’Œ linux-0.12/.git/objects/51/1a1c8116ccc7d840a3a4a88d9a29114ffc9377 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/51/af5078dc140ba4882616bc74aea52e95d7b403 å’Œ linux-0.12/.git/objects/51/af5078dc140ba4882616bc74aea52e95d7b403 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/56/009d7012610c5a22d59de64e4305676ce95cef å’Œ linux-0.12/.git/objects/56/009d7012610c5a22d59de64e4305676ce95cef ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/56/3be0ae028084fdb126a5f0faa0f6c917d69e98 å’Œ linux-0.12/.git/objects/56/3be0ae028084fdb126a5f0faa0f6c917d69e98 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/58/b4224ec1fcfa661bacaa9cd93c3f036cfeb976 å’Œ linux-0.12/.git/objects/58/b4224ec1fcfa661bacaa9cd93c3f036cfeb976 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/59/957385a810141213f9f1f4d09cc50a7ea7ae5c å’Œ linux-0.12/.git/objects/59/957385a810141213f9f1f4d09cc50a7ea7ae5c ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/5c/56663d889c78a0acc40df3ea132eb9eaf312b3 å’Œ linux-0.12/.git/objects/5c/56663d889c78a0acc40df3ea132eb9eaf312b3 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/5c/b109ea31dcf3c75dd15e1df96cdeff9436c106 å’Œ linux-0.12/.git/objects/5c/b109ea31dcf3c75dd15e1df96cdeff9436c106 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/5c/f84ef6bd96164490032a8a545fd21bfade4c26 å’Œ linux-0.12/.git/objects/5c/f84ef6bd96164490032a8a545fd21bfade4c26 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/5e/3d1a59618b2448a2dafe106f02f6cc189451d0 å’Œ linux-0.12/.git/objects/5e/3d1a59618b2448a2dafe106f02f6cc189451d0 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/5e/6768fb6e603e833ab8e6dc8d27a2b40c7c4a8c å’Œ linux-0.12/.git/objects/5e/6768fb6e603e833ab8e6dc8d27a2b40c7c4a8c ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/5f/5685f735b0b3b600e2b867099b8fa5d15a9bfc å’Œ linux-0.12/.git/objects/5f/5685f735b0b3b600e2b867099b8fa5d15a9bfc ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/5f/8167be5d283fa9ccf568c2b3eb27e1fb711f1d å’Œ linux-0.12/.git/objects/5f/8167be5d283fa9ccf568c2b3eb27e1fb711f1d ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/5f/d2cdbd8a87885d9544089ef2fd2462bdcc3af6 å’Œ linux-0.12/.git/objects/5f/d2cdbd8a87885d9544089ef2fd2462bdcc3af6 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/60/9f30fc8dc7475b5139ad7914d725e6025063e9 å’Œ linux-0.12/.git/objects/60/9f30fc8dc7475b5139ad7914d725e6025063e9 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/63/49a7376dac106f77309e457131ead3aa255a2b å’Œ linux-0.12/.git/objects/63/49a7376dac106f77309e457131ead3aa255a2b ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/65/51da15712bf515d839d9eac0ea1ad4f057047f å’Œ linux-0.12/.git/objects/65/51da15712bf515d839d9eac0ea1ad4f057047f ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/66/757f21cff3f477d3090e6e6e9344b1d63736ca å’Œ linux-0.12/.git/objects/66/757f21cff3f477d3090e6e6e9344b1d63736ca ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/66/f4cec49cb34eb23278e6d17a7c3d9b0bf62510 å’Œ linux-0.12/.git/objects/66/f4cec49cb34eb23278e6d17a7c3d9b0bf62510 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/67/baadb1afc6aa1e8070f8f5fb5c6d9cd3052224 å’Œ linux-0.12/.git/objects/67/baadb1afc6aa1e8070f8f5fb5c6d9cd3052224 ä¸åŒ
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/68/516c7e579d05c942b158d48e79c327d2b31c55 linux-0.12/.git/objects/68/516c7e579d05c942b158d48e79c327d2b31c55
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/68/516c7e579d05c942b158d48e79c327d2b31c55	1970-01-01 08:00:00.000000000 +0800
++++ linux-0.12/.git/objects/68/516c7e579d05c942b158d48e79c327d2b31c55	2015-02-12 21:12:05.580558133 +0800
+@@ -0,0 +1 @@
++x%=Â0@ïWti‹4ÆÉ‚ê$t*.N¡ù(©x‰è¿7èúŞƒgy±¨·»•j[D¦˜ßŠÉ*	IÈw®àŸ©Ïê¾×ˆCi¯Ëó5±—"@åÃL1 1Ãå4Ç›1PQtœ}À}$Éw÷€‘¸‰yS?È›´şoøSA(Ã
+\ æ–‡ä»¶å°¾æ²¡æœ‰ newline å­—ç¬¦
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/68/88e444cd7cb987f6eb452332a4efea000f6d3a å’Œ linux-0.12/.git/objects/68/88e444cd7cb987f6eb452332a4efea000f6d3a ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/68/d5bfb271070f80fae740e1aa8edcb267b4c1b6 å’Œ linux-0.12/.git/objects/68/d5bfb271070f80fae740e1aa8edcb267b4c1b6 ä¸åŒ
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/69/7c4f4ad684913ac50204a0a08a50e26f01b164 linux-0.12/.git/objects/69/7c4f4ad684913ac50204a0a08a50e26f01b164
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/69/7c4f4ad684913ac50204a0a08a50e26f01b164	1970-01-01 08:00:00.000000000 +0800
++++ linux-0.12/.git/objects/69/7c4f4ad684913ac50204a0a08a50e26f01b164	2015-02-12 21:12:05.564558132 +0800
+@@ -0,0 +1,3 @@
++xKÊÉOR0²0ePÎLËKIMSˆqqqu‹÷àRr3óR‘D¸àŠB‚\<İÜâCªB%•© £ròóÒ
++JŠR2ÓÒâK¬¹”Só€L.„)ÁQ®ÈF@ù0ı¥yÅ™éy©)ƒŠ3«RQL)»×/ÔÇîGAC£,?3EAKÓ@hÔùiiÅ©%ùi!‘®:
++¾®¾N®Aš@µc5Ô4ÀR`mºvPy˜“$pZ%
+\ æ–‡ä»¶å°¾æ²¡æœ‰ newline å­—ç¬¦
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/6a/4af151c660f9a4e1f243ecff05f9fa8ca05f1c å’Œ linux-0.12/.git/objects/6a/4af151c660f9a4e1f243ecff05f9fa8ca05f1c ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/6a/94f13f7b2fe01d877a622c4d822cc6f06d097e å’Œ linux-0.12/.git/objects/6a/94f13f7b2fe01d877a622c4d822cc6f06d097e ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/6c/de2d19b336cebc55374242dd6ff8abaf2a153d å’Œ linux-0.12/.git/objects/6c/de2d19b336cebc55374242dd6ff8abaf2a153d ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/6f/35d037da4c87cf406c683a66cddeb16dd91e53 å’Œ linux-0.12/.git/objects/6f/35d037da4c87cf406c683a66cddeb16dd91e53 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/78/1fdab7e5aed6de06ea5c96889b6c5633e306fd å’Œ linux-0.12/.git/objects/78/1fdab7e5aed6de06ea5c96889b6c5633e306fd ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/78/28e613967e8984971ac48976938ad9e2e1d952 å’Œ linux-0.12/.git/objects/78/28e613967e8984971ac48976938ad9e2e1d952 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/7a/4ede1aa96f68eeb75f0787686eb6903ad202c4 å’Œ linux-0.12/.git/objects/7a/4ede1aa96f68eeb75f0787686eb6903ad202c4 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/7a/cf55d10e427ce64361a93c0f7660fa7d5a8ff5 å’Œ linux-0.12/.git/objects/7a/cf55d10e427ce64361a93c0f7660fa7d5a8ff5 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/7b/07cc9243dcb9b6b47a3ebb29029a7b5704eeb8 å’Œ linux-0.12/.git/objects/7b/07cc9243dcb9b6b47a3ebb29029a7b5704eeb8 ä¸åŒ
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/7d/560386a62e5603e63e6d19e4d811ad3bdf6f06 linux-0.12/.git/objects/7d/560386a62e5603e63e6d19e4d811ad3bdf6f06
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/7d/560386a62e5603e63e6d19e4d811ad3bdf6f06	1970-01-01 08:00:00.000000000 +0800
++++ linux-0.12/.git/objects/7d/560386a62e5603e63e6d19e4d811ad3bdf6f06	2015-02-12 21:12:05.564558132 +0800
+@@ -0,0 +1,9 @@
++x…UmOÛ0ŞWçWœ„„Úª£”m@×©@`•h™ÒthÓ¤È$µÖ:•íĞ•±ıöİ¹/„Û—¼Ü=wÏù|~|3Én ~Ôh¼Ù‘©JD
++Ñğë0
++{}?úäí A*ñÄæÕ*p+¬•Ó,Mø´°¹VìX¨Ô<cu[@¿¸ãøå±I¦n™½‹Œˆ›Œa8~d*qè3w^tNe¬³âwÓ+æ¼Ï°L*•eö>šJ•[aæÂØ&¥^ı KáB¡æ2Sië ÄPùÂØÅLmgZ‹ØÊLšˆW`gÃ0\|¶O$*ÃÜÊ… ®ˆ»ŒÕ	ƒ_`ìb"^‚uGÃ¬›c¿øDrõ:úÚ{Gèk\•Ğ
++ü\g31TõV	}B¿'t_&	òÿìø}şÿÔ§İc‡„>åŠ'|›úâ„±#rc×¹…--—
++¸JÀ—ZlÃƒQŸ±cÂù”+ù,_8
++k Ìõ±ØN@mì^†¬îvåY+çÒÁŒej«¨7)Áz¿àü,úa)Mªib„•Y©‚îÚPªC«h)—ËÅ ÓËà• İ6üy-ª7Ü&+°u:€4°õ'Lßüàj]+V×†ı²‡Ñƒ
++\Í„æ4³†fruìÌºÈ;8ùèl:Î É„qÃ;ÏôH36à³Õ&øã$S-v¢dï°/¬äŞo;ËCğh ƒ»©š¹Pä"rzà_™}÷¶“PA%”‹iVH™¡ñµ»[@90/Õ3\¿¼ÌNKt5¸dÅÖø†â`ÇG)š[¢©º±^Š]®õÚ‰¥T·À—Ô9Ôuû´¹=ÒÖ 
++üî%Û_Ï[Y¿ô‚p„ú¶ãspuÎÖJÈ¤+b¥¯Ë"\ëÉ"m´®u©p´›åã>³ç˜/1ÎQ•g¡©p:(U<É-"Şw¼Å,LTÔÙCêÕõ ÜıPZr­Ûdq&
++F'èh½/7]°Ôàå™ËÄ«x4ğê@Ã«†'x@–9JŒ “Ç6(ñ33ëpê²`õYn‘ÊÛ*‘)Ô*…Wûˆn2“
+\ æ–‡ä»¶å°¾æ²¡æœ‰ newline å­—ç¬¦
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/7d/8a06ba96b9512cd161acd217e5d0fb5d0989b3 å’Œ linux-0.12/.git/objects/7d/8a06ba96b9512cd161acd217e5d0fb5d0989b3 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/7f/9ce7941f17c23c05c504ee0d92343999dbe2cc å’Œ linux-0.12/.git/objects/7f/9ce7941f17c23c05c504ee0d92343999dbe2cc ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/83/4283d226c76c44f0efb71a4ed84c86040db50c å’Œ linux-0.12/.git/objects/83/4283d226c76c44f0efb71a4ed84c86040db50c ä¸åŒ
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/83/f07c7bbfe72a5807214c0c0b3ffc5ece519e04 linux-0.12/.git/objects/83/f07c7bbfe72a5807214c0c0b3ffc5ece519e04
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/83/f07c7bbfe72a5807214c0c0b3ffc5ece519e04	1970-01-01 08:00:00.000000000 +0800
++++ linux-0.12/.git/objects/83/f07c7bbfe72a5807214c0c0b3ffc5ece519e04	2015-02-12 21:12:05.568558132 +0800
+@@ -0,0 +1,2 @@
++x]Œ±
++Â0E]ÍW\è mApª¸	:¸é\Úä…Ûi^PÿİŠ àvÏsëÖ×X.W£ÄY6dQûÃ¶Ü©d Çô*q¬Ûhëp¹Ü/²f3ÎSìqfÅ¡ñ±5<i\˜£‚,Cš+¤ZÅuu´x¨ñ°¨Tú=Š/wŞ|Ä³PŠnB=Ãñ§¤©öº©z¤ÖµÄUGsü§ïƒ0ú„Ø8«^=äLq
+\ æ–‡ä»¶å°¾æ²¡æœ‰ newline å­—ç¬¦
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/85/a1131c9dedd39aaa67128715d2b3540a6e55ff å’Œ linux-0.12/.git/objects/85/a1131c9dedd39aaa67128715d2b3540a6e55ff ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/87/7e629c0ecb0368fb133810dbf3df8c50f16962 å’Œ linux-0.12/.git/objects/87/7e629c0ecb0368fb133810dbf3df8c50f16962 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/8b/99d707e8315eaaf2ae582811cf67fb4f430f9c å’Œ linux-0.12/.git/objects/8b/99d707e8315eaaf2ae582811cf67fb4f430f9c ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/8c/3fc5898115591ffe2b110b1d9c644261f62e2e å’Œ linux-0.12/.git/objects/8c/3fc5898115591ffe2b110b1d9c644261f62e2e ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/8d/88b069e06771d2fd4f9ffb9d46b5f9652a144a å’Œ linux-0.12/.git/objects/8d/88b069e06771d2fd4f9ffb9d46b5f9652a144a ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/8d/e11a1455e2e5bd60ab9c937c802e20dec82895 å’Œ linux-0.12/.git/objects/8d/e11a1455e2e5bd60ab9c937c802e20dec82895 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/8e/7a686273c06479b3377e8585097eaa723e6e11 å’Œ linux-0.12/.git/objects/8e/7a686273c06479b3377e8585097eaa723e6e11 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/8f/1ef9b125f31f595203c78c24ef07c32d98820a å’Œ linux-0.12/.git/objects/8f/1ef9b125f31f595203c78c24ef07c32d98820a ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/8f/c0317fd2afd902f520cf87c822a40ae42edc43 å’Œ linux-0.12/.git/objects/8f/c0317fd2afd902f520cf87c822a40ae42edc43 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/92/c897369f7aa1e89d8771e9642a9dc475a3c58e å’Œ linux-0.12/.git/objects/92/c897369f7aa1e89d8771e9642a9dc475a3c58e ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/94/c37132d3318c46fa0ebcdec1a73b9c9dbc3620 å’Œ linux-0.12/.git/objects/94/c37132d3318c46fa0ebcdec1a73b9c9dbc3620 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/94/f7c52ed7c31de9946d85d360d4b40f1792ef73 å’Œ linux-0.12/.git/objects/94/f7c52ed7c31de9946d85d360d4b40f1792ef73 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/95/06a067ef89434c6386083425a072f93cde1166 å’Œ linux-0.12/.git/objects/95/06a067ef89434c6386083425a072f93cde1166 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/96/d8de1fa49f6e2bd732a3c4458b886585ab04f5 å’Œ linux-0.12/.git/objects/96/d8de1fa49f6e2bd732a3c4458b886585ab04f5 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/97/871c70e9acb78959d61ed5911fb06f2219fd1b å’Œ linux-0.12/.git/objects/97/871c70e9acb78959d61ed5911fb06f2219fd1b ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/98/6d548bf9dcdd6718eae7599403aee2c3c6aa3b å’Œ linux-0.12/.git/objects/98/6d548bf9dcdd6718eae7599403aee2c3c6aa3b ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/9b/b9c264178ae1406c0a9b5cde28856655f6bd9e å’Œ linux-0.12/.git/objects/9b/b9c264178ae1406c0a9b5cde28856655f6bd9e ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/9e/81c0f5ee2b9a06ef28e2dbf1c4a7b68af53ba2 å’Œ linux-0.12/.git/objects/9e/81c0f5ee2b9a06ef28e2dbf1c4a7b68af53ba2 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/9e/bf3f78d028522bc87486487816832ff9e2aebd å’Œ linux-0.12/.git/objects/9e/bf3f78d028522bc87486487816832ff9e2aebd ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/a1/274970cae3542c2047e8bcbd62f3eec7c32069 å’Œ linux-0.12/.git/objects/a1/274970cae3542c2047e8bcbd62f3eec7c32069 ä¸åŒ
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/a1/3a2be3a0a41c8a1b2045999e4c4df1baf4638e linux-0.12/.git/objects/a1/3a2be3a0a41c8a1b2045999e4c4df1baf4638e
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/a1/3a2be3a0a41c8a1b2045999e4c4df1baf4638e	1970-01-01 08:00:00.000000000 +0800
++++ linux-0.12/.git/objects/a1/3a2be3a0a41c8a1b2045999e4c4df1baf4638e	2015-02-12 21:12:34.132558811 +0800
+@@ -0,0 +1,2 @@
++x+)JMU065e040031QğMÌNMËÌIehvj¾¤v<ÇåÃûíR~7|ÚXx·ò@Õ$¦¤è%3Äüğû¶wš˜Ëf­®øKÒ¿îù¨A$çç$¥ùËş:Ğ±Ú®ÁäÊç˜/L›Ë5ŠáŠòÊR‹J€Šâl¥"»U<İú'ÏôíŒÄ”ÀPE)™e@OZÿNW¼[÷¿€)ÂLëUÈ¤òØ<¨‚ÔD |ëBa™¹o/ÏZ•.Ô.zisW^è˜|QQ~P‰ì–Õ›.X{e(pÜ¿=k¿¯îõ·P%é©%ñ¥ ‡Ä7¦ï‹Õ°_yækÆ¡Í¯Õş.”—…*ÊM,ÉˆOÍ-ÍI,ùëûüë¦T^LJÍOÔ!$#¦²4¨`Ê÷£z×Ë¾œ’Ûz9áÊ~ñIï‹Q
++ú
+\ æ–‡ä»¶å°¾æ²¡æœ‰ newline å­—ç¬¦
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/a2/ab4ee8b18961441145c5643a7b40f55faeab9b å’Œ linux-0.12/.git/objects/a2/ab4ee8b18961441145c5643a7b40f55faeab9b ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/a3/0130e73a1f54d0fec44160fd2bd481b006bd7d å’Œ linux-0.12/.git/objects/a3/0130e73a1f54d0fec44160fd2bd481b006bd7d ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/a4/a33b57cfd13f5dec04dc06e31884d9d4929639 å’Œ linux-0.12/.git/objects/a4/a33b57cfd13f5dec04dc06e31884d9d4929639 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/a5/bf9af52978fcd0d89725c0ca177fe1c4ebc032 å’Œ linux-0.12/.git/objects/a5/bf9af52978fcd0d89725c0ca177fe1c4ebc032 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/a6/7db96f4b187042e2bd53753715063631067b48 å’Œ linux-0.12/.git/objects/a6/7db96f4b187042e2bd53753715063631067b48 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/a6/adb6e1942e72ac0ca7533d6f829a4fe8569203 å’Œ linux-0.12/.git/objects/a6/adb6e1942e72ac0ca7533d6f829a4fe8569203 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/a7/65fe498c28d131104e49537a0aa099cfdfe16e å’Œ linux-0.12/.git/objects/a7/65fe498c28d131104e49537a0aa099cfdfe16e ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/a7/8b1e559dcb9475a88233233540db4de01ef9b6 å’Œ linux-0.12/.git/objects/a7/8b1e559dcb9475a88233233540db4de01ef9b6 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/a7/8e0690e076f71aa8a7db58d691013d0b8272f2 å’Œ linux-0.12/.git/objects/a7/8e0690e076f71aa8a7db58d691013d0b8272f2 ä¸åŒ
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/a8/9726dec77064d6c4f95b345df8aeebdcb0c0d1 linux-0.12/.git/objects/a8/9726dec77064d6c4f95b345df8aeebdcb0c0d1
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/a8/9726dec77064d6c4f95b345df8aeebdcb0c0d1	1970-01-01 08:00:00.000000000 +0800
++++ linux-0.12/.git/objects/a8/9726dec77064d6c4f95b345df8aeebdcb0c0d1	2015-02-12 21:12:05.580558133 +0800
+@@ -0,0 +1,3 @@
++x=±
++Â0Eóº´!4)ˆ NB§ââÒäÕ©4m¨o°àvÏ=nGcÕq¿“œ ç—U’ë$®h"–&Õ?“ß
++¨êºhÒ&Àcœ¢&’”Œe{ç”jî×öÒ>•b™ó†‹pZ¼³-‡3c*|‚ÑD‡ÜùYl'ÂŒ>Ì`=½#[æBO¯øôñ]°/1	6J
+\ æ–‡ä»¶å°¾æ²¡æœ‰ newline å­—ç¬¦
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/aa/260c84b9b4809cc0f5d6d9934cc12f7ae14d61 linux-0.12/.git/objects/aa/260c84b9b4809cc0f5d6d9934cc12f7ae14d61
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/aa/260c84b9b4809cc0f5d6d9934cc12f7ae14d61	1970-01-01 08:00:00.000000000 +0800
++++ linux-0.12/.git/objects/aa/260c84b9b4809cc0f5d6d9934cc12f7ae14d61	2015-02-12 21:12:05.564558132 +0800
+@@ -0,0 +1 @@
++x}SÁNÃ0åº|…¥]6Äq@ ^ÙÄ¤&V¡¨kœ.Z›”4hÿN“µ]ªm=5~~y¶_ÜuªÖğx÷p5\2ä@—«%W‹É’>“a…‰]©³	=Ö!6?9Z©R"‘È@H…øEj2DÉ'G‘pöÒ©ãF$U2#²ó—áÛÓl:õ›8B‰Üèª.?×Âëû|ŞavJ0¸Ãí¸í¸‘³Óä‚Y¥j'-6J({³Io–á®GYHÕ“Ís6]jëb>ŞDd*äÖW·ƒ²ˆ1íƒî=ÔÁÈ“:N§¤ösÙçQ@NÍs·ãØ¯ÖëV(G<oûaIbF‰½}*íœÑıtatøsú]*s£1`Lt¡å9Ÿ˜ÖLRSÊÂD• Ô¾Aµp\#dàÎÆÕYÀË)—Q†Ÿ÷_’GñÖ!ûj–ú‡ù¬EX
+\ æ–‡ä»¶å°¾æ²¡æœ‰ newline å­—ç¬¦
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/aa/76c7dbd4b89de4dceaa9a12d03f13f8332488e å’Œ linux-0.12/.git/objects/aa/76c7dbd4b89de4dceaa9a12d03f13f8332488e ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/ab/0c0cd8724b4351ee09346ec19f35e8e10476cd å’Œ linux-0.12/.git/objects/ab/0c0cd8724b4351ee09346ec19f35e8e10476cd ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/ab/e0cc2118f5b69ac406513e1f2cc67596afe577 å’Œ linux-0.12/.git/objects/ab/e0cc2118f5b69ac406513e1f2cc67596afe577 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/ad/0c2403acbdf029d00449e5b999235c43210745 å’Œ linux-0.12/.git/objects/ad/0c2403acbdf029d00449e5b999235c43210745 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/ae/9f8cb91f4eefe0cae1dc6c2e4c49e666a8d492 å’Œ linux-0.12/.git/objects/ae/9f8cb91f4eefe0cae1dc6c2e4c49e666a8d492 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/af/57313e97792153c6bea3bd08a4f07f280b5d7e å’Œ linux-0.12/.git/objects/af/57313e97792153c6bea3bd08a4f07f280b5d7e ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/af/7cbdaf04978ca0dcaa6f504ba4a5efa6917f72 å’Œ linux-0.12/.git/objects/af/7cbdaf04978ca0dcaa6f504ba4a5efa6917f72 ä¸åŒ
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/af/d8364f6bec674045faf32d985ec1247102a8e6 linux-0.12/.git/objects/af/d8364f6bec674045faf32d985ec1247102a8e6
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/af/d8364f6bec674045faf32d985ec1247102a8e6	1970-01-01 08:00:00.000000000 +0800
++++ linux-0.12/.git/objects/af/d8364f6bec674045faf32d985ec1247102a8e6	2015-02-12 21:12:05.580558133 +0800
+@@ -0,0 +1,2 @@
++x»
++Â@E­ç+Ò$!dY¬"D+!U°±Z²àÀ°NVôï]Óî¹p,'‹ú¨ªl™bş(&«'	½+ë.êkƒz4âT.‚÷ôz/ì¥HPù°RhÌt»Ìãü0*Š³xÊ‘dóıó`ä+naÖ5Å­ÛİŸVßÀºy)z
+\ æ–‡ä»¶å°¾æ²¡æœ‰ newline å­—ç¬¦
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/b3/26435a0b0d95c67d5b38742d3b38613a28bebc å’Œ linux-0.12/.git/objects/b3/26435a0b0d95c67d5b38742d3b38613a28bebc ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/b3/bbf8bbea1dfc3be895378b076a2a0c3ace4bcb å’Œ linux-0.12/.git/objects/b3/bbf8bbea1dfc3be895378b076a2a0c3ace4bcb ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/b4/f36fe1705e3b249d7d5c1bfc224e2459809a7f å’Œ linux-0.12/.git/objects/b4/f36fe1705e3b249d7d5c1bfc224e2459809a7f ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/b7/2f6b05c96ae33118470d8eca61a8197f20c42f å’Œ linux-0.12/.git/objects/b7/2f6b05c96ae33118470d8eca61a8197f20c42f ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/b7/4215cb2c8c7472a14f36c49029e0c125b35e71 å’Œ linux-0.12/.git/objects/b7/4215cb2c8c7472a14f36c49029e0c125b35e71 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/b7/815bbc85761b220f56698792abb91018cc9b20 å’Œ linux-0.12/.git/objects/b7/815bbc85761b220f56698792abb91018cc9b20 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/ba/b2e4c3c02d31fa3861964b5198609b52fb4e6b å’Œ linux-0.12/.git/objects/ba/b2e4c3c02d31fa3861964b5198609b52fb4e6b ä¸åŒ
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/bd/1c586bd8af9f18509e7287bf0a1c6c5c839955 linux-0.12/.git/objects/bd/1c586bd8af9f18509e7287bf0a1c6c5c839955
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/bd/1c586bd8af9f18509e7287bf0a1c6c5c839955	1970-01-01 08:00:00.000000000 +0800
++++ linux-0.12/.git/objects/bd/1c586bd8af9f18509e7287bf0a1c6c5c839955	2015-02-12 21:12:05.580558133 +0800
+@@ -0,0 +1,2 @@
++xMPAnÂ0ì5~Å	PHR%àÚk½#coHZÇ¶büü®m½wgfg|Qæ»Ã[³a°PƒC3åW¬ÍÒxõ¹†öxl¾ˆààÛL7®dÜ7ŒemV€0ÚóA;ğ=‚2÷­Â*ˆÛ-ÖFKb­#kB®àn¦_H£ãX‹l__)¤‚s´8w|V±+‚è¯
++Jä¡Z•èìšvv}‰ğÂò¡¤ä‰A„u„FsSğ¾í®*1Òi@ìP%Åòˆ¢å±èJ1í²çõçÅ§-Ñ8¹ÿPÕ¶c…àŠúIsÖ&£Íhaß±öôÚİmŞíO—’\äâ,1Ê˜"T(NRGcãé#ÃôÆÃ„ı.šZ
+\ æ–‡ä»¶å°¾æ²¡æœ‰ newline å­—ç¬¦
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/be/b5879fe28d88ae8147424e322e0dfff011c56d å’Œ linux-0.12/.git/objects/be/b5879fe28d88ae8147424e322e0dfff011c56d ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/c0/3657f2acde87bd4b6017f877f83f24f76ef3ea å’Œ linux-0.12/.git/objects/c0/3657f2acde87bd4b6017f877f83f24f76ef3ea ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/c0/b96f4e8e2a2e418f2d42c93cca7c8c95ddcb78 å’Œ linux-0.12/.git/objects/c0/b96f4e8e2a2e418f2d42c93cca7c8c95ddcb78 ä¸åŒ
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/c0/c9d69956962fa7bed801762f868584ae146064 linux-0.12/.git/objects/c0/c9d69956962fa7bed801762f868584ae146064
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/c0/c9d69956962fa7bed801762f868584ae146064	1970-01-01 08:00:00.000000000 +0800
++++ linux-0.12/.git/objects/c0/c9d69956962fa7bed801762f868584ae146064	2015-02-12 21:12:05.580558133 +0800
+@@ -0,0 +1,2 @@
++xE»
++Â@Em¯6I<º$Š VB°6VC’]q`İó  ş»›4–÷s¹¶¦y¶ŠCÀQ³¦Xs“š¸Z×.À?ÎËSÄÒ)Şì{¬µìŒ<©l•—Su¬îDà±iõ îÃ]/£ç`´ºîY+-K\>|6=ÎgÔZ©øÀš¨î^D¾˜Ñ&™²D…¨úD×jY[Ñ¸üß;øÂ{‚=Ò
+\ æ–‡ä»¶å°¾æ²¡æœ‰ newline å­—ç¬¦
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/c1/12e104c41d17a1f8df2f7389e3f5a57bd539b4 å’Œ linux-0.12/.git/objects/c1/12e104c41d17a1f8df2f7389e3f5a57bd539b4 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/c2/01aa840fbccc20fa40738df22825c4d340ea43 å’Œ linux-0.12/.git/objects/c2/01aa840fbccc20fa40738df22825c4d340ea43 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/c2/189a19ed4a8c6a8afa6d8fd21176ce4ce33349 å’Œ linux-0.12/.git/objects/c2/189a19ed4a8c6a8afa6d8fd21176ce4ce33349 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/c3/5d563d0193c3510bd0fa74a4e84c6efa5e64d0 å’Œ linux-0.12/.git/objects/c3/5d563d0193c3510bd0fa74a4e84c6efa5e64d0 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/c3/ac9a1f908d225a4fb4bad50bde31405bbda109 å’Œ linux-0.12/.git/objects/c3/ac9a1f908d225a4fb4bad50bde31405bbda109 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/c3/d7af69ab651f98f8d6e204af7d5ff5eb4f5e72 å’Œ linux-0.12/.git/objects/c3/d7af69ab651f98f8d6e204af7d5ff5eb4f5e72 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/c7/7e49c44fd44ce5098b1167fe373e5baabcff62 å’Œ linux-0.12/.git/objects/c7/7e49c44fd44ce5098b1167fe373e5baabcff62 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/c7/b41eb90309a1e3f4c3a6f3bde72200932f7375 å’Œ linux-0.12/.git/objects/c7/b41eb90309a1e3f4c3a6f3bde72200932f7375 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/c8/647019067d42c431ffa03c6f9b31546b936a82 å’Œ linux-0.12/.git/objects/c8/647019067d42c431ffa03c6f9b31546b936a82 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/ca/0941ba0b2c4a8ff9461ac6ee20265cae11efa5 å’Œ linux-0.12/.git/objects/ca/0941ba0b2c4a8ff9461ac6ee20265cae11efa5 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/d0/fb96ddbb16b6aaaa9cf445eaf399360d20bebb å’Œ linux-0.12/.git/objects/d0/fb96ddbb16b6aaaa9cf445eaf399360d20bebb ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/d2/94d85edff581298477ab51f7c407d51ae911f3 å’Œ linux-0.12/.git/objects/d2/94d85edff581298477ab51f7c407d51ae911f3 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/d5/136f2e81c8faf0cdd950e38f24de62674ba124 å’Œ linux-0.12/.git/objects/d5/136f2e81c8faf0cdd950e38f24de62674ba124 ä¸åŒ
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/d5/cc42a6d0157b30a15d0e914246c7aef271e53e linux-0.12/.git/objects/d5/cc42a6d0157b30a15d0e914246c7aef271e53e
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/d5/cc42a6d0157b30a15d0e914246c7aef271e53e	1970-01-01 08:00:00.000000000 +0800
++++ linux-0.12/.git/objects/d5/cc42a6d0157b30a15d0e914246c7aef271e53e	2015-02-12 21:12:05.560558132 +0800
+@@ -0,0 +1,3 @@
++xİ
++‚@…»Õ§&¼a£7–µ]ËØVñg¢woÔ©én9;s¾s&3e»$Ùl•Î«¡ìÚ,tÒt:ªÊºeúBÈæ*„8|BHê‘s”Ó4‹PÑ{Üa¾ïÏ~…Í&Âyu¶)NV+8eÂíş®4²-Œ&mGõÄ‘9pŒ/ ãêhp'àÌ"ŠjeƒÔ"ñ=Óör­ Î_BÌ¿H¿
++Ï|JNøét7~Æx…©HYs¤?Œç
+\ æ–‡ä»¶å°¾æ²¡æœ‰ newline å­—ç¬¦
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/d6/c336051bd0e597d8919fe8530ea2d68857ebda linux-0.12/.git/objects/d6/c336051bd0e597d8919fe8530ea2d68857ebda
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/d6/c336051bd0e597d8919fe8530ea2d68857ebda	1970-01-01 08:00:00.000000000 +0800
++++ linux-0.12/.git/objects/d6/c336051bd0e597d8919fe8530ea2d68857ebda	2015-02-12 21:12:05.564558132 +0800
+@@ -0,0 +1,5 @@
++xu‘]o‚0†wKÅYH7qfÑeJB”¯DÁHÛQ­‰)ÄÖMÿı
++~/vÕ¦ïsŞóöœÍ®ØÀë[ÿA%9M³’è3JbËÇ‰‡Tñ@hv÷†TB·»CšÁˆX—ŸÊŒ=›HÂ³0Ö~tEÑ@Ğ£?èRö|×«t!WºiÂPR¨Û†¢ä¤ òb¿kÂK’v ^xiMì)Ğ‚;”e±çY
++íîÍ9BÏ
++\EéÉ§k•ò"Æ¾cøØjL¤xÔÄÑ2£Ë‰p¸X\‰ŒÇÆqà4ÀÊ)Â^Eµ[Ešæğb(s`{9|÷ÌÔıî\&áÒ®æ‹†>4]ª0·òZˆÈ¾X³[æeä‹ŠÊuQôÔ«–!>*¾
++£ú¦#$¦›ğzÎšà Íøš'»b«¿7$ig°^ÆØ©ü¯KUHÍhJrôge«Í
+\ æ–‡ä»¶å°¾æ²¡æœ‰ newline å­—ç¬¦
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/d7/481eb24d74b4e1fc46a360d8e462133ecaea72 å’Œ linux-0.12/.git/objects/d7/481eb24d74b4e1fc46a360d8e462133ecaea72 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/d7/c95d5c214b72779633fb1e8742183dc87dc972 å’Œ linux-0.12/.git/objects/d7/c95d5c214b72779633fb1e8742183dc87dc972 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/db/3dda2659a24e0ee649a07d086255db73b66042 å’Œ linux-0.12/.git/objects/db/3dda2659a24e0ee649a07d086255db73b66042 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/dc/99f7cd1f11ce1008d01538fe37d91f8412c76a å’Œ linux-0.12/.git/objects/dc/99f7cd1f11ce1008d01538fe37d91f8412c76a ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/dd/13414adf60e5e8302b6d4b6be30006af669ecf å’Œ linux-0.12/.git/objects/dd/13414adf60e5e8302b6d4b6be30006af669ecf ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/de/56a74aa24f1f5623435102aea2f8baa087bf1a å’Œ linux-0.12/.git/objects/de/56a74aa24f1f5623435102aea2f8baa087bf1a ä¸åŒ
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/df/52e74d6ede3b10fc2c96ca77e9696d432c2de5 linux-0.12/.git/objects/df/52e74d6ede3b10fc2c96ca77e9696d432c2de5
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/df/52e74d6ede3b10fc2c96ca77e9696d432c2de5	1970-01-01 08:00:00.000000000 +0800
++++ linux-0.12/.git/objects/df/52e74d6ede3b10fc2c96ca77e9696d432c2de5	2015-02-12 21:12:05.580558133 +0800
+@@ -0,0 +1,3 @@
++xË
++Â0E]ÏWtÓ–ĞX¡ ‚ºº*n\…æECMâãïİ]Î9p%‰ıq¿ã-`‹HÎç''ù{uÉtªĞMÔ·ûaèÇ’D|„õ5“Er€Jë¼A!ÆûuºLO! r^QÖOÙ»˜t·œDüF5jçÛ>ØYÍTğ1¡Zæ[&³eÁZ‘
++Î>5ğ#>3û
+\ æ–‡ä»¶å°¾æ²¡æœ‰ newline å­—ç¬¦
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/df/9129c7db14e3ae3e36e92891ca648a69a0dfe1 å’Œ linux-0.12/.git/objects/df/9129c7db14e3ae3e36e92891ca648a69a0dfe1 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/e0/589acf6455d42ad09758f9d75b42f489b57922 å’Œ linux-0.12/.git/objects/e0/589acf6455d42ad09758f9d75b42f489b57922 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/e1/393ac931510f9046bb49549c07efd8a21e20f4 å’Œ linux-0.12/.git/objects/e1/393ac931510f9046bb49549c07efd8a21e20f4 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/e2/3ec63987a6f285357e38af578bc5c397bb2c7c å’Œ linux-0.12/.git/objects/e2/3ec63987a6f285357e38af578bc5c397bb2c7c ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/e4/85fd9721dc5d7eff700258362aea5492775d6e å’Œ linux-0.12/.git/objects/e4/85fd9721dc5d7eff700258362aea5492775d6e ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/e6/c593f0bd196de09b11125db85c8725fb96ea73 å’Œ linux-0.12/.git/objects/e6/c593f0bd196de09b11125db85c8725fb96ea73 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/e8/58c1f4c5ed03a41b2e0dc6ceae616172ea8a5b å’Œ linux-0.12/.git/objects/e8/58c1f4c5ed03a41b2e0dc6ceae616172ea8a5b ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/e9/17e9c27f5182535e2fd19e8e3381216fa846cc å’Œ linux-0.12/.git/objects/e9/17e9c27f5182535e2fd19e8e3381216fa846cc ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/e9/218e44c324b4cc84d32b51e7374471cb911e3a å’Œ linux-0.12/.git/objects/e9/218e44c324b4cc84d32b51e7374471cb911e3a ä¸åŒ
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/eb/ce88c6d6d28fa631726d7882464fd0bcd60d18 linux-0.12/.git/objects/eb/ce88c6d6d28fa631726d7882464fd0bcd60d18
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/eb/ce88c6d6d28fa631726d7882464fd0bcd60d18	1970-01-01 08:00:00.000000000 +0800
++++ linux-0.12/.git/objects/eb/ce88c6d6d28fa631726d7882464fd0bcd60d18	2015-02-12 21:12:05.576558133 +0800
+@@ -0,0 +1,2 @@
++xUÍNÃ0„¹ÖO±‡¦QêP~„ª®pCâ€På$›ÆªkW¶“VB¼;»Bádkwæ›±+ã*¸»¹¿(s9€Ñ¶?—{ôMyôÚÆ½¬i“–ÙóVëõ
++à…dŞœ”i-K!FÂ{‡´…±<¸8!ÔÊZ¡	Û ´t PU„è8åè(”î0§=†¨ín±£#HxU{õË€“A–A´&¤m˜¡Œaî	‘©Ü¥¶µé„‡åw²{ÿf¶<›§?‘V!ª¨k¨;å¡êÛÕÕõíçF<SM~s„!ŒoË’(gYµ³!¶ÚC,`P[£iFEÂ‚lÿ:›Š“VJ¹_b6õlÄŒ-š¬<§b>f+˜OÄ™~ü«Â˜ôÆ´M’³’ÁmÊÏHÌC±ç'mÄ·ø‹Ä®à
+\ æ–‡ä»¶å°¾æ²¡æœ‰ newline å­—ç¬¦
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/ec/733d049d88589ea808912c43936a32dc1f1186 å’Œ linux-0.12/.git/objects/ec/733d049d88589ea808912c43936a32dc1f1186 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/f0/f3fb30bbc1b92d75fd0848ddad503a443d5fc4 å’Œ linux-0.12/.git/objects/f0/f3fb30bbc1b92d75fd0848ddad503a443d5fc4 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/f2/08591614159fb37558c667c0b777a3b27b6777 å’Œ linux-0.12/.git/objects/f2/08591614159fb37558c667c0b777a3b27b6777 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/f3/dec540dd7a94c561c8d435aa2e5ef4ecc9d7e4 å’Œ linux-0.12/.git/objects/f3/dec540dd7a94c561c8d435aa2e5ef4ecc9d7e4 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/f5/fdf41bc266b141c0ff1c31c471048638324670 å’Œ linux-0.12/.git/objects/f5/fdf41bc266b141c0ff1c31c471048638324670 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/f7/9fd7359024e5d16012656f612d9812521c1fdb å’Œ linux-0.12/.git/objects/f7/9fd7359024e5d16012656f612d9812521c1fdb ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/f8/5ddf36c57194cd22c8ddb15f2a529dd684d5f0 å’Œ linux-0.12/.git/objects/f8/5ddf36c57194cd22c8ddb15f2a529dd684d5f0 ä¸åŒ
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/fb/b4e7357f8223d20648222e5d3c6e516fc2578e å’Œ linux-0.12/.git/objects/fb/b4e7357f8223d20648222e5d3c6e516fc2578e ä¸åŒ
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/fd/79ec09b65d439215521a00b8ebb5c7449296fd linux-0.12/.git/objects/fd/79ec09b65d439215521a00b8ebb5c7449296fd
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/fd/79ec09b65d439215521a00b8ebb5c7449296fd	1970-01-01 08:00:00.000000000 +0800
++++ linux-0.12/.git/objects/fd/79ec09b65d439215521a00b8ebb5c7449296fd	2015-02-12 21:12:05.564558132 +0800
+@@ -0,0 +1,3 @@
++x¥RÁŠÛ0ì5úŠÀ"9»I{ÚÂ’C e÷°‡ĞäR(9~Î
++9•äì¦_ß'%qšÒÂBÖø=Í¼yS6m‰ûÏ?mí*ª¡—«ùìë£~C>ZG¿!"v”ŠÖ/Æ£ØİØ„˜˜mÛÎE´5ÂÎ¬	~tÖSë`øõ›nK\:P·ş¦†t+Vß_ÆÈØšLÉ;íšJJô¶ó‚m^_Ú@Ç^ĞªÆ@1İšzVUQ¥ƒıI2q(à;ÓH)Äì't„óÙº¨p‡O
++“+L¡¸>3ÕÙ4ÍCûµÖ=9S‡h|”³Å-gË{ª0Èó3Œ)‹8©p#ûšôŸÂÑÿUJ©	ôn­ËÎ6Ñ:Ì<m¤ºíuàt¸ÊÖBì[[Ç%WA"¡ÎÄ<(G`ãºÆ–i?çX[ØuYc”ìYŞU¯3ù5šşÍ™\w(íµyŸ(TöøîŸ-Š­d/Ó`©}ì“Ä_ĞÂé¡
+\ æ–‡ä»¶å°¾æ²¡æœ‰ newline å­—ç¬¦
+äºŒè¿›åˆ¶æ–‡ä»¶ /home/weizi/Documents/linux/compress_source/linux-0.12/.git/objects/fd/858181c09113e78243bd6cfde97f6d5a06939c å’Œ linux-0.12/.git/objects/fd/858181c09113e78243bd6cfde97f6d5a06939c ä¸åŒ
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/.git/refs/heads/master linux-0.12/.git/refs/heads/master
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/.git/refs/heads/master	1970-01-01 08:00:00.000000000 +0800
++++ linux-0.12/.git/refs/heads/master	2015-02-12 22:17:40.168651644 +0800
+@@ -0,0 +1 @@
++20f503f9a7bc8179dd24669d36a07301b7c5cb41
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/.gitignore linux-0.12/.gitignore
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/.gitignore	1970-01-01 08:00:00.000000000 +0800
++++ linux-0.12/.gitignore	2015-02-12 22:16:28.332649937 +0800
+@@ -0,0 +1,13 @@
++*.o
++*.a
++Image
++rootimage-0.12-hd
++system.S
++System.map
++tools/system
++tools/kernel
++boot/bootsect
++boot/bootsect.s
++boot/setup
++boot/setup.s
++kernel/chr_drv/keyboard.s
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/include/asm/memory.h linux-0.12/include/asm/memory.h
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/include/asm/memory.h	1991-06-16 05:54:44.000000000 +0900
++++ linux-0.12/include/asm/memory.h	2015-02-12 21:43:11.672602483 +0800
+@@ -9,6 +9,6 @@
+ void * _res = dest; \
+ __asm__ ("cld;rep;movsb" \
+ 	::"D" ((long)(_res)),"S" ((long)(src)),"c" ((long) (n)) \
+-	:"di","si","cx"); \
++	); \
+ _res; \
+ })
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/include/asm/segment.h linux-0.12/include/asm/segment.h
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/include/asm/segment.h	1991-11-26 02:48:24.000000000 +0800
++++ linux-0.12/include/asm/segment.h	2015-02-12 21:49:11.876611044 +0800
+@@ -1,40 +1,40 @@
+-extern inline unsigned char get_fs_byte(const char * addr)
++static inline unsigned char get_fs_byte(const char * addr)
+ {
+ 	unsigned register char _v;
+ 
+-	__asm__ ("movb %%fs:%1,%0":"=r" (_v):"m" (*addr));
++	__asm__ ("movb %%fs:%1,%0":"=q" (_v):"m" (*addr));
+ 	return _v;
+ }
+ 
+-extern inline unsigned short get_fs_word(const unsigned short *addr)
++static inline unsigned short get_fs_word(const unsigned short *addr)
+ {
+ 	unsigned short _v;
+ 
+-	__asm__ ("movw %%fs:%1,%0":"=r" (_v):"m" (*addr));
++	__asm__ ("movw %%fs:%1,%0":"=q" (_v):"m" (*addr));
+ 	return _v;
+ }
+ 
+-extern inline unsigned long get_fs_long(const unsigned long *addr)
++static inline unsigned long get_fs_long(const unsigned long *addr)
+ {
+ 	unsigned long _v;
+ 
+-	__asm__ ("movl %%fs:%1,%0":"=r" (_v):"m" (*addr)); \
++	__asm__ ("movl %%fs:%1,%0":"=q" (_v):"m" (*addr)); \
+ 	return _v;
+ }
+ 
+-extern inline void put_fs_byte(char val,char *addr)
++static inline void put_fs_byte(char val,char *addr)
+ {
+-__asm__ ("movb %0,%%fs:%1"::"r" (val),"m" (*addr));
++__asm__ ("movb %0,%%fs:%1"::"q" (val),"m" (*addr));
+ }
+ 
+-extern inline void put_fs_word(short val,short * addr)
++static inline void put_fs_word(short val,short * addr)
+ {
+-__asm__ ("movw %0,%%fs:%1"::"r" (val),"m" (*addr));
++__asm__ ("movw %0,%%fs:%1"::"q" (val),"m" (*addr));
+ }
+ 
+-extern inline void put_fs_long(unsigned long val,unsigned long * addr)
++static inline void put_fs_long(unsigned long val,unsigned long * addr)
+ {
+-__asm__ ("movl %0,%%fs:%1"::"r" (val),"m" (*addr));
++__asm__ ("movl %0,%%fs:%1"::"q" (val),"m" (*addr));
+ }
+ 
+ /*
+@@ -44,21 +44,21 @@
+  * [ nothing wrong here, Linus ]
+  */
+ 
+-extern inline unsigned long get_fs() 
++static inline unsigned long get_fs() 
+ {
+ 	unsigned short _v;
+ 	__asm__("mov %%fs,%%ax":"=a" (_v):);
+ 	return _v;
+ }
+ 
+-extern inline unsigned long get_ds() 
++static inline unsigned long get_ds() 
+ {
+ 	unsigned short _v;
+ 	__asm__("mov %%ds,%%ax":"=a" (_v):);
+ 	return _v;
+ }
+ 
+-extern inline void set_fs(unsigned long val)
++static inline void set_fs(unsigned long val)
+ {
+ 	__asm__("mov %0,%%fs"::"a" ((unsigned short) val));
+ }
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/include/linux/mm.h linux-0.12/include/linux/mm.h
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/include/linux/mm.h	1992-01-13 23:46:41.000000000 +0800
++++ linux-0.12/include/linux/mm.h	2015-02-12 21:55:08.132619511 +0800
+@@ -17,7 +17,7 @@
+ void swap_free(int page_nr);
+ void swap_in(unsigned long *table_ptr);
+ 
+-extern inline volatile void oom(void)
++static inline volatile void oom(void)
+ {
+ 	printk("out of memory\n\r");
+ 	do_exit(SIGSEGV);
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/include/linux/sched.h linux-0.12/include/linux/sched.h
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/include/linux/sched.h	1992-01-14 06:24:42.000000000 +0800
++++ linux-0.12/include/linux/sched.h	2015-02-12 22:10:15.352641072 +0800
+@@ -221,12 +221,12 @@
+  */
+ #define switch_to(n) {\
+ struct {long a,b;} __tmp; \
+-__asm__("cmpl %%ecx,_current\n\t" \
++__asm__("cmpl %%ecx,current\n\t" \
+ 	"je 1f\n\t" \
+ 	"movw %%dx,%1\n\t" \
+-	"xchgl %%ecx,_current\n\t" \
++	"xchgl %%ecx,current\n\t" \
+ 	"ljmp %0\n\t" \
+-	"cmpl %%ecx,_last_task_used_math\n\t" \
++	"cmpl %%ecx,last_task_used_math\n\t" \
+ 	"jne 1f\n\t" \
+ 	"clts\n" \
+ 	"1:" \
+@@ -245,7 +245,7 @@
+ 	  "m" (*((addr)+4)), \
+ 	  "m" (*((addr)+7)), \
+ 	  "d" (base) \
+-	:"dx")
++	)
+ 
+ #define _set_limit(addr,limit) \
+ __asm__("movw %%dx,%0\n\t" \
+@@ -257,7 +257,7 @@
+ 	::"m" (*(addr)), \
+ 	  "m" (*((addr)+6)), \
+ 	  "d" (limit) \
+-	:"dx")
++	)
+ 
+ #define set_base(ldt,base) _set_base( ((char *)&(ldt)) , base )
+ #define set_limit(ldt,limit) _set_limit( ((char *)&(ldt)) , (limit-1)>>12 )
+@@ -268,7 +268,7 @@
+ 	"movb %2,%%dl\n\t" \
+ 	"shll $16,%%edx\n\t" \
+ 	"movw %1,%%dx" \
+-	:"=d" (__base) \
++	:"=&d" (__base) \
+ 	:"m" (*((addr)+2)), \
+ 	 "m" (*((addr)+4)), \
+ 	 "m" (*((addr)+7))); \
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/include/string.h linux-0.12/include/string.h
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/include/string.h	1991-09-17 23:04:09.000000000 +0800
++++ linux-0.12/include/string.h	2015-02-12 21:37:52.864594906 +0800
+@@ -31,7 +31,7 @@
+ 	"stosb\n\t"
+ 	"testb %%al,%%al\n\t"
+ 	"jne 1b"
+-	::"S" (src),"D" (dest):"si","di","ax");
++	::"S" (src),"D" (dest):"ax");
+ return dest;
+ }
+ 
+@@ -47,7 +47,7 @@
+ 	"rep\n\t"
+ 	"stosb\n"
+ 	"2:"
+-	::"S" (src),"D" (dest),"c" (count):"si","di","ax","cx");
++	::"S" (src),"D" (dest),"c" (count):"ax");
+ return dest;
+ }
+ 
+@@ -61,7 +61,7 @@
+ 	"stosb\n\t"
+ 	"testb %%al,%%al\n\t"
+ 	"jne 1b"
+-	::"S" (src),"D" (dest),"a" (0),"c" (0xffffffff):"si","di","ax","cx");
++	::"S" (src),"D" (dest),"a" (0),"c" (0xffffffff));
+ return dest;
+ }
+ 
+@@ -81,7 +81,7 @@
+ 	"2:\txorl %2,%2\n\t"
+ 	"stosb"
+ 	::"S" (src),"D" (dest),"a" (0),"c" (0xffffffff),"g" (count)
+-	:"si","di","ax","cx");
++	);
+ return dest;
+ }
+ 
+@@ -100,7 +100,7 @@
+ 	"jl 3f\n\t"
+ 	"negl %%eax\n"
+ 	"3:"
+-	:"=a" (__res):"D" (cs),"S" (ct):"si","di");
++	:"=a" (__res):"D" (cs),"S" (ct));
+ return __res;
+ }
+ 
+@@ -121,7 +121,7 @@
+ 	"jl 4f\n\t"
+ 	"negl %%eax\n"
+ 	"4:"
+-	:"=a" (__res):"D" (cs),"S" (ct),"c" (count):"si","di","cx");
++	:"=a" (__res):"D" (cs),"S" (ct),"c" (count));
+ return __res;
+ }
+ 
+@@ -138,7 +138,7 @@
+ 	"movl $1,%1\n"
+ 	"2:\tmovl %1,%0\n\t"
+ 	"decl %0"
+-	:"=a" (__res):"S" (s),"0" (c):"si");
++	:"=a" (__res):"S" (s),"0" (c));
+ return __res;
+ }
+ 
+@@ -154,7 +154,7 @@
+ 	"decl %0\n"
+ 	"2:\ttestb %%al,%%al\n\t"
+ 	"jne 1b"
+-	:"=d" (__res):"0" (0),"S" (s),"a" (c):"ax","si");
++	:"=d" (__res):"0" (0),"S" (s),"a" (c));
+ return __res;
+ }
+ 
+@@ -178,7 +178,7 @@
+ 	"je 1b\n"
+ 	"2:\tdecl %0"
+ 	:"=S" (__res):"a" (0),"c" (0xffffffff),"0" (cs),"g" (ct)
+-	:"ax","cx","dx","di");
++	:"dx","di");
+ return __res-cs;
+ }
+ 
+@@ -202,7 +202,7 @@
+ 	"jne 1b\n"
+ 	"2:\tdecl %0"
+ 	:"=S" (__res):"a" (0),"c" (0xffffffff),"0" (cs),"g" (ct)
+-	:"ax","cx","dx","di");
++	:"dx","di");
+ return __res-cs;
+ }
+ 
+@@ -229,7 +229,7 @@
+ 	"2:\txorl %0,%0\n"
+ 	"3:"
+ 	:"=S" (__res):"a" (0),"c" (0xffffffff),"0" (cs),"g" (ct)
+-	:"ax","cx","dx","di");
++	:"dx","di");
+ return __res;
+ }
+ 
+@@ -256,7 +256,7 @@
+ 	"xorl %%eax,%%eax\n\t"
+ 	"2:"
+ 	:"=a" (__res):"0" (0),"c" (0xffffffff),"S" (cs),"g" (ct)
+-	:"cx","dx","di","si");
++	:"dx","di");
+ return __res;
+ }
+ 
+@@ -268,7 +268,7 @@
+ 	"scasb\n\t"
+ 	"notl %0\n\t"
+ 	"decl %0"
+-	:"=c" (__res):"D" (s),"a" (0),"0" (0xffffffff):"di");
++	:"=c" (__res):"D" (s),"a" (0),"0" (0xffffffff));
+ return __res;
+ }
+ 
+@@ -339,7 +339,7 @@
+ 	"rep\n\t"
+ 	"movsb"
+ 	::"c" (n),"S" (src),"D" (dest)
+-	:"cx","si","di");
++	);
+ return dest;
+ }
+ 
+@@ -350,13 +350,13 @@
+ 	"rep\n\t"
+ 	"movsb"
+ 	::"c" (n),"S" (src),"D" (dest)
+-	:"cx","si","di");
++	);
+ else
+ __asm__("std\n\t"
+ 	"rep\n\t"
+ 	"movsb"
+ 	::"c" (n),"S" (src+n-1),"D" (dest+n-1)
+-	:"cx","si","di");
++	);
+ return dest;
+ }
+ 
+@@ -372,7 +372,7 @@
+ 	"negl %%eax\n"
+ 	"1:"
+ 	:"=a" (__res):"0" (0),"D" (cs),"S" (ct),"c" (count)
+-	:"si","di","cx");
++	);
+ return __res;
+ }
+ 
+@@ -388,7 +388,7 @@
+ 	"movl $1,%0\n"
+ 	"1:\tdecl %0"
+ 	:"=D" (__res):"a" (c),"D" (cs),"c" (count)
+-	:"cx");
++	);
+ return __res;
+ }
+ 
+@@ -398,7 +398,7 @@
+ 	"rep\n\t"
+ 	"stosb"
+ 	::"a" (c),"D" (s),"c" (count)
+-	:"cx","di");
++	);
+ return s;
+ }
+ 
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/include/unistd.h linux-0.12/include/unistd.h
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/include/unistd.h	1992-01-14 06:48:52.000000000 +0800
++++ linux-0.12/include/unistd.h	2015-02-12 21:25:50.468577737 +0800
+@@ -224,7 +224,11 @@
+ volatile void exit(int status);
+ volatile void _exit(int status);
+ int fcntl(int fildes, int cmd, ...);
++#ifndef __IN_MAIN__
+ int fork(void);
++int pause(void);
++int sync(void);
++#endif
+ int getpid(void);
+ int getuid(void);
+ int geteuid(void);
+@@ -238,7 +242,6 @@
+ int mount(const char * specialfile, const char * dir, int rwflag);
+ int nice(int val);
+ int open(const char * filename, int flag, ...);
+-int pause(void);
+ int pipe(int * fildes);
+ int read(int fildes, char * buf, off_t count);
+ int setpgrp(void);
+@@ -249,7 +252,6 @@
+ int stat(const char * filename, struct stat * stat_buf);
+ int fstat(int fildes, struct stat * stat_buf);
+ int stime(time_t * tptr);
+-int sync(void);
+ time_t time(time_t * tloc);
+ time_t times(struct tms * tbuf);
+ int ulimit(int cmd, long limit);
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/init/main.c linux-0.12/init/main.c
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/init/main.c	1992-01-13 20:45:44.000000000 +0800
++++ linux-0.12/init/main.c	2015-02-12 21:27:41.808580383 +0800
+@@ -4,6 +4,7 @@
+  *  (C) 1991  Linus Torvalds
+  */
+ 
++#define __IN_MAIN__
+ #define __LIBRARY__
+ #include <unistd.h>
+ #include <time.h>
+@@ -20,6 +21,8 @@
+  * won't be any messing with the stack from main(), but we define
+  * some others too.
+  */
++static inline int fork() __attribute__((always_inline));
++static inline int pause() __attribute__((always_inline));
+ static inline _syscall0(int,fork)
+ static inline _syscall0(int,pause)
+ static inline _syscall1(int,setup,void *,BIOS)
+@@ -173,10 +176,10 @@
+  * task can run, and if not we return here.
+  */
+ 	for(;;)
+-		__asm__("int $0x80"::"a" (__NR_pause):"ax");
++		__asm__("int $0x80"::"a" (__NR_pause));
+ }
+ 
+-static int printf(const char *fmt, ...)
++int printf(const char *fmt, ...)
+ {
+ 	va_list args;
+ 	int i;
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/kernel/asm.s linux-0.12/kernel/asm.s
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/kernel/asm.s	1991-12-19 00:40:03.000000000 +0800
++++ linux-0.12/kernel/asm.s	2015-02-12 21:50:21.944612709 +0800
+@@ -11,14 +11,14 @@
+  * the fpu must be properly saved/resored. This hasn't been tested.
+  */
+ 
+-.globl _divide_error,_debug,_nmi,_int3,_overflow,_bounds,_invalid_op
+-.globl _double_fault,_coprocessor_segment_overrun
+-.globl _invalid_TSS,_segment_not_present,_stack_segment
+-.globl _general_protection,_coprocessor_error,_irq13,_reserved
+-.globl _alignment_check
++.globl divide_error,debug,nmi,int3,overflow,bounds,invalid_op
++.globl double_fault,coprocessor_segment_overrun
++.globl invalid_TSS,segment_not_present,stack_segment
++.globl general_protection,coprocessor_error,irq13,reserved
++.globl alignment_check
+ 
+-_divide_error:
+-	pushl $_do_divide_error
++divide_error:
++	pushl $do_divide_error
+ no_error_code:
+ 	xchgl %eax,(%esp)
+ 	pushl %ebx
+@@ -51,39 +51,39 @@
+ 	popl %eax
+ 	iret
+ 
+-_debug:
+-	pushl $_do_int3		# _do_debug
++debug:
++	pushl $do_int3		# do_debug
+ 	jmp no_error_code
+ 
+-_nmi:
+-	pushl $_do_nmi
++nmi:
++	pushl $do_nmi
+ 	jmp no_error_code
+ 
+-_int3:
+-	pushl $_do_int3
++int3:
++	pushl $do_int3
+ 	jmp no_error_code
+ 
+-_overflow:
+-	pushl $_do_overflow
++overflow:
++	pushl $do_overflow
+ 	jmp no_error_code
+ 
+-_bounds:
+-	pushl $_do_bounds
++bounds:
++	pushl $do_bounds
+ 	jmp no_error_code
+ 
+-_invalid_op:
+-	pushl $_do_invalid_op
++invalid_op:
++	pushl $do_invalid_op
+ 	jmp no_error_code
+ 
+-_coprocessor_segment_overrun:
+-	pushl $_do_coprocessor_segment_overrun
++coprocessor_segment_overrun:
++	pushl $do_coprocessor_segment_overrun
+ 	jmp no_error_code
+ 
+-_reserved:
+-	pushl $_do_reserved
++reserved:
++	pushl $do_reserved
+ 	jmp no_error_code
+ 
+-_irq13:
++irq13:
+ 	pushl %eax
+ 	xorb %al,%al
+ 	outb %al,$0xF0
+@@ -93,10 +93,10 @@
+ 1:	jmp 1f
+ 1:	outb %al,$0xA0
+ 	popl %eax
+-	jmp _coprocessor_error
++	jmp coprocessor_error
+ 
+-_double_fault:
+-	pushl $_do_double_fault
++double_fault:
++	pushl $do_double_fault
+ error_code:
+ 	xchgl %eax,4(%esp)		# error code <-> %eax
+ 	xchgl %ebx,(%esp)		# &function <-> %ebx
+@@ -129,23 +129,23 @@
+ 	popl %eax
+ 	iret
+ 
+-_invalid_TSS:
+-	pushl $_do_invalid_TSS
++invalid_TSS:
++	pushl $do_invalid_TSS
+ 	jmp error_code
+ 
+-_segment_not_present:
+-	pushl $_do_segment_not_present
++segment_not_present:
++	pushl $do_segment_not_present
+ 	jmp error_code
+ 
+-_stack_segment:
+-	pushl $_do_stack_segment
++stack_segment:
++	pushl $do_stack_segment
+ 	jmp error_code
+ 
+-_general_protection:
+-	pushl $_do_general_protection
++general_protection:
++	pushl $do_general_protection
+ 	jmp error_code
+ 
+-_alignment_check:
+-	pushl $_do_alignment_check
++alignment_check:
++	pushl $do_alignment_check
+ 	jmp error_code
+ 
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/kernel/blk_drv/blk.h linux-0.12/kernel/blk_drv/blk.h
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/kernel/blk_drv/blk.h	1991-12-27 04:02:50.000000000 +0800
++++ linux-0.12/kernel/blk_drv/blk.h	2015-02-12 21:56:25.420621348 +0800
+@@ -87,7 +87,7 @@
+ #define DEVICE_ON(device)
+ #define DEVICE_OFF(device)
+ 
+-#elif
++#else
+ /* unknown blk device */
+ #error "unknown blk device"
+ 
+@@ -107,7 +107,7 @@
+ #endif
+ static void (DEVICE_REQUEST)(void);
+ 
+-extern inline void unlock_buffer(struct buffer_head * bh)
++static inline void unlock_buffer(struct buffer_head * bh)
+ {
+ 	if (!bh->b_lock)
+ 		printk(DEVICE_NAME ": free buffer being unlocked\n");
+@@ -115,7 +115,7 @@
+ 	wake_up(&bh->b_wait);
+ }
+ 
+-extern inline void end_request(int uptodate)
++static inline void end_request(int uptodate)
+ {
+ 	DEVICE_OFF(CURRENT->dev);
+ 	if (CURRENT->bh) {
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/kernel/blk_drv/floppy.c linux-0.12/kernel/blk_drv/floppy.c
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/kernel/blk_drv/floppy.c	1992-01-10 11:45:33.000000000 +0800
++++ linux-0.12/kernel/blk_drv/floppy.c	2015-02-12 21:42:10.416601027 +0800
+@@ -156,7 +156,7 @@
+ #define copy_buffer(from,to) \
+ __asm__("cld ; rep ; movsl" \
+ 	::"c" (BLOCK_SIZE/4),"S" ((long)(from)),"D" ((long)(to)) \
+-	:"cx","di","si")
++	)
+ 
+ static void setup_DMA(void)
+ {
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/kernel/blk_drv/hd.c linux-0.12/kernel/blk_drv/hd.c
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/kernel/blk_drv/hd.c	1992-01-16 14:39:10.000000000 +0800
++++ linux-0.12/kernel/blk_drv/hd.c	2015-02-12 22:11:38.996643060 +0800
+@@ -62,10 +62,10 @@
+ static int hd_sizes[5*MAX_HD] = {0, };
+ 
+ #define port_read(port,buf,nr) \
+-__asm__("cld;rep;insw"::"d" (port),"D" (buf),"c" (nr):"cx","di")
++__asm__("cld;rep;insw"::"d" (port),"D" (buf),"c" (nr))
+ 
+ #define port_write(port,buf,nr) \
+-__asm__("cld;rep;outsw"::"d" (port),"S" (buf),"c" (nr):"cx","si")
++__asm__("cld;rep;outsw"::"d" (port),"S" (buf),"c" (nr))
+ 
+ extern void hd_interrupt(void);
+ extern void rd_load(void);
+@@ -169,7 +169,7 @@
+ {
+ 	int retries = 100000;
+ 
+-	while (--retries && (inb_p(HD_STATUS)&0xc0)!=0x40);
++	while (--retries && (inb_p(HD_STATUS)&0x80));
+ 	return (retries);
+ }
+ 
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/kernel/blk_drv/Makefile linux-0.12/kernel/blk_drv/Makefile
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/kernel/blk_drv/Makefile	1992-01-13 03:49:21.000000000 +0800
++++ linux-0.12/kernel/blk_drv/Makefile	2015-02-12 21:29:44.824583307 +0800
+@@ -6,13 +6,13 @@
+ # unless it's something special (ie not a .c file).
+ #
+ 
+-AR	=gar
+-AS	=gas
+-LD	=gld
+-LDFLAGS	=-s -x
+-CC	=gcc
+-CFLAGS	=-Wall -O -fstrength-reduce -fomit-frame-pointer -fcombine-regs \
+-	-finline-functions -mstring-insns -nostdinc -I../../include
++AR	=ar
++AS	=as --32
++LD	=ld -m elf_i386
++LDFLAGS	=
++CC	=gcc -m32
++CFLAGS	=-g3 -O0 -fstrength-reduce -fomit-frame-pointer -fno-stack-protector \
++	-finline-functions -fno-builtin -nostdinc -I../../include -w #-Wall 
+ CPP	=gcc -E -nostdinc -I../../include
+ 
+ .c.s:
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/kernel/chr_drv/console.c linux-0.12/kernel/chr_drv/console.c
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/kernel/chr_drv/console.c	1992-01-13 04:28:33.000000000 +0800
++++ linux-0.12/kernel/chr_drv/console.c	2015-02-12 21:54:03.576617977 +0800
+@@ -199,14 +199,14 @@
+ 				__asm__("cld\n\t"
+ 					"rep\n\t"
+ 					"movsl\n\t"
+-					"movl _video_num_columns,%1\n\t"
++					"movl video_num_columns,%1\n\t"
+ 					"rep\n\t"
+ 					"stosw"
+ 					::"a" (video_erase_char),
+ 					"c" ((video_num_lines-1)*video_num_columns>>1),
+ 					"D" (video_mem_start),
+ 					"S" (origin)
+-					:"cx","di","si");
++					);
+ 				scr_end -= origin-video_mem_start;
+ 				pos -= origin-video_mem_start;
+ 				origin = video_mem_start;
+@@ -217,21 +217,21 @@
+ 					::"a" (video_erase_char),
+ 					"c" (video_num_columns),
+ 					"D" (scr_end-video_size_row)
+-					:"cx","di");
++					);
+ 			}
+ 			set_origin(currcons);
+ 		} else {
+ 			__asm__("cld\n\t"
+ 				"rep\n\t"
+ 				"movsl\n\t"
+-				"movl _video_num_columns,%%ecx\n\t"
++				"movl video_num_columns,%%ecx\n\t"
+ 				"rep\n\t"
+ 				"stosw"
+ 				::"a" (video_erase_char),
+ 				"c" ((bottom-top-1)*video_num_columns>>1),
+ 				"D" (origin+video_size_row*top),
+ 				"S" (origin+video_size_row*(top+1))
+-				:"cx","di","si");
++				);
+ 		}
+ 	}
+ 	else		/* Not EGA/VGA */
+@@ -239,14 +239,14 @@
+ 		__asm__("cld\n\t"
+ 			"rep\n\t"
+ 			"movsl\n\t"
+-			"movl _video_num_columns,%%ecx\n\t"
++			"movl video_num_columns,%%ecx\n\t"
+ 			"rep\n\t"
+ 			"stosw"
+ 			::"a" (video_erase_char),
+ 			"c" ((bottom-top-1)*video_num_columns>>1),
+ 			"D" (origin+video_size_row*top),
+ 			"S" (origin+video_size_row*(top+1))
+-			:"cx","di","si");
++			);
+ 	}
+ }
+ 
+@@ -260,14 +260,14 @@
+ 			"rep\n\t"
+ 			"movsl\n\t"
+ 			"addl $2,%%edi\n\t"	/* %edi has been decremented by 4 */
+-			"movl _video_num_columns,%%ecx\n\t"
++			"movl video_num_columns,%%ecx\n\t"
+ 			"rep\n\t"
+ 			"stosw"
+ 			::"a" (video_erase_char),
+ 			"c" ((bottom-top-1)*video_num_columns>>1),
+ 			"D" (origin+video_size_row*bottom-4),
+ 			"S" (origin+video_size_row*(bottom-1)-4)
+-			:"ax","cx","di","si");
++			);
+ 	}
+ 	else		/* Not EGA/VGA */
+ 	{
+@@ -275,14 +275,14 @@
+ 			"rep\n\t"
+ 			"movsl\n\t"
+ 			"addl $2,%%edi\n\t"	/* %edi has been decremented by 4 */
+-			"movl _video_num_columns,%%ecx\n\t"
++			"movl video_num_columns,%%ecx\n\t"
+ 			"rep\n\t"
+ 			"stosw"
+ 			::"a" (video_erase_char),
+ 			"c" ((bottom-top-1)*video_num_columns>>1),
+ 			"D" (origin+video_size_row*bottom-4),
+ 			"S" (origin+video_size_row*(bottom-1)-4)
+-			:"ax","cx","di","si");
++			);
+ 	}
+ }
+ 
+@@ -347,7 +347,7 @@
+ 		"stosw\n\t"
+ 		::"c" (count),
+ 		"D" (start),"a" (video_erase_char)
+-		:"cx","di");
++		);
+ }
+ 
+ static void csi_K(int currcons, int vpar)
+@@ -378,7 +378,7 @@
+ 		"stosw\n\t"
+ 		::"c" (count),
+ 		"D" (start),"a" (video_erase_char)
+-		:"cx","di");
++		);
+ }
+ 
+ void csi_m(int currcons )
+@@ -601,7 +601,7 @@
+ 						::"a" (translate[c-32]),
+ 						"m" (*(short *)pos),
+ 						"m" (attr)
+-						:"ax");
++						);
+ 					pos += 2;
+ 					x++;
+ 				} else if (c==27)
+@@ -1017,7 +1017,7 @@
+ 			::"a" (c),
+ 			"m" (*(short *)pos),
+ 			"m" (attr)
+-			:"ax");
++			);
+ 		pos += 2;
+ 		x++;
+ 	}
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/kernel/chr_drv/keyboard.S linux-0.12/kernel/chr_drv/keyboard.S
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/kernel/chr_drv/keyboard.S	1992-01-12 23:30:51.000000000 +0800
++++ linux-0.12/kernel/chr_drv/keyboard.S	2015-02-12 21:57:11.804622450 +0800
+@@ -18,7 +18,7 @@
+ #define KBD_FINNISH
+ 
+ .text
+-.globl _keyboard_interrupt
++.globl keyboard_interrupt
+ 
+ /*
+  * these are for the keyboard read functions
+@@ -39,7 +39,7 @@
+  *  keyboard scan-code and converts it into the appropriate
+  *  ascii character(s).
+  */
+-_keyboard_interrupt:
++keyboard_interrupt:
+ 	pushl %eax
+ 	pushl %ebx
+ 	pushl %ecx
+@@ -49,8 +49,8 @@
+ 	movl $0x10,%eax
+ 	mov %ax,%ds
+ 	mov %ax,%es
+-	movl _blankinterval,%eax
+-	movl %eax,_blankcount
++	movl blankinterval,%eax
++	movl %eax,blankcount
+ 	xorl %eax,%eax		/* %eax is scan code */
+ 	inb $0x60,%al
+ 	cmpb $0xe0,%al
+@@ -73,7 +73,7 @@
+ 	movb $0x20,%al
+ 	outb %al,$0x20
+ 	pushl $0
+-	call _do_tty_interrupt
++	call do_tty_interrupt
+ 	addl $4,%esp
+ 	pop %es
+ 	pop %ds
+@@ -95,7 +95,7 @@
+ put_queue:
+ 	pushl %ecx
+ 	pushl %edx
+-	movl _table_list,%edx		# read-queue for console
++	movl table_list,%edx		# read-queue for console
+ 	movl head(%edx),%ecx
+ 1:	movb %al,buf(%edx,%ecx)
+ 	incl %ecx
+@@ -164,9 +164,9 @@
+ scroll:
+ 	testb $0x03,mode
+ 	je 1f
+-	call _show_mem
++	call show_mem
+ 	jmp 2f
+-1:	call _show_state
++1:	call show_state
+ 2:	xorb $1,leds
+ 	jmp set_leds
+ num:	xorb $2,leds
+@@ -239,7 +239,7 @@
+ 	jmp put_queue
+ alt_func:
+ 	pushl %eax
+-	call _change_console
++	call change_console
+ 	popl %eax
+ end_func:
+ 	ret
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/kernel/chr_drv/Makefile linux-0.12/kernel/chr_drv/Makefile
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/kernel/chr_drv/Makefile	1992-01-13 03:49:17.000000000 +0800
++++ linux-0.12/kernel/chr_drv/Makefile	2015-02-12 21:29:59.468583655 +0800
+@@ -6,13 +6,13 @@
+ # unless it's something special (ie not a .c file).
+ #
+ 
+-AR	=gar
+-AS	=gas
+-LD	=gld
+-LDFLAGS	=-s -x
+-CC	=gcc
+-CFLAGS	=-Wall -O -fstrength-reduce -fomit-frame-pointer -fcombine-regs \
+-	-finline-functions -mstring-insns -nostdinc -I../../include
++AR	=ar
++AS	=as --32
++LD	=ld -m elf_i386
++LDFLAGS	=
++CC	=gcc -m32
++CFLAGS	=-g3 -O0 -fstrength-reduce -fomit-frame-pointer -fno-stack-protector \
++	-finline-functions -fno-builtin -nostdinc -I../../include -w #-Wall
+ CPP	=gcc -E -nostdinc -I../../include
+ 
+ .c.s:
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/kernel/chr_drv/rs_io.s linux-0.12/kernel/chr_drv/rs_io.s
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/kernel/chr_drv/rs_io.s	1992-01-08 14:27:08.000000000 +0800
++++ linux-0.12/kernel/chr_drv/rs_io.s	2015-02-12 21:53:27.340617115 +0800
+@@ -11,7 +11,7 @@
+  */
+ 
+ .text
+-.globl _rs1_interrupt,_rs2_interrupt
++.globl rs1_interrupt,rs2_interrupt
+ 
+ size	= 1024				/* must be power of two !
+ 					   and must match the value
+@@ -30,13 +30,13 @@
+  * These are the actual interrupt routines. They look where
+  * the interrupt is coming from, and take appropriate action.
+  */
+-.align 2
+-_rs1_interrupt:
+-	pushl $_table_list+8
++.align 4
++rs1_interrupt:
++	pushl $table_list+8
+ 	jmp rs_int
+-.align 2
+-_rs2_interrupt:
+-	pushl $_table_list+16
++.align 4
++rs2_interrupt:
++	pushl $table_list+16
+ rs_int:
+ 	pushl %edx
+ 	pushl %ecx
+@@ -73,29 +73,29 @@
+ 	popl %ebx
+ 	popl %ecx
+ 	popl %edx
+-	addl $4,%esp		# jump over _table_list entry
++	addl $4,%esp		# jump over table_list entry
+ 	iret
+ 
+ jmp_table:
+ 	.long modem_status,write_char,read_char,line_status
+ 
+-.align 2
++.align 4
+ modem_status:
+ 	addl $6,%edx		/* clear intr by reading modem status reg */
+ 	inb %dx,%al
+ 	ret
+ 
+-.align 2
++.align 4
+ line_status:
+ 	addl $5,%edx		/* clear intr by reading line status reg. */
+ 	inb %dx,%al
+ 	ret
+ 
+-.align 2
++.align 4
+ read_char:
+ 	inb %dx,%al
+ 	movl %ecx,%edx
+-	subl $_table_list,%edx
++	subl $table_list,%edx
+ 	shrl $3,%edx
+ 	movl (%ecx),%ecx		# read-queue
+ 	movl head(%ecx),%ebx
+@@ -107,11 +107,11 @@
+ 	movl %ebx,head(%ecx)
+ 1:	addl $63,%edx
+ 	pushl %edx
+-	call _do_tty_interrupt
++	call do_tty_interrupt
+ 	addl $4,%esp
+ 	ret
+ 
+-.align 2
++.align 4
+ write_char:
+ 	movl 4(%ecx),%ecx		# write-queue
+ 	movl head(%ecx),%ebx
+@@ -133,7 +133,7 @@
+ 	cmpl head(%ecx),%ebx
+ 	je write_buffer_empty
+ 	ret
+-.align 2
++.align 4
+ write_buffer_empty:
+ 	movl proc_list(%ecx),%ebx	# wake up sleeping process
+ 	testl %ebx,%ebx			# is there any?
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/kernel/Makefile linux-0.12/kernel/Makefile
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/kernel/Makefile	1992-01-13 03:49:12.000000000 +0800
++++ linux-0.12/kernel/Makefile	2015-02-12 21:29:31.096582981 +0800
+@@ -6,13 +6,13 @@
+ # unless it's something special (ie not a .c file).
+ #
+ 
+-AR	=gar
+-AS	=gas
+-LD	=gld
+-LDFLAGS	=-s -x
+-CC	=gcc
+-CFLAGS	=-Wall -O -fstrength-reduce -fomit-frame-pointer -fcombine-regs \
+-	-finline-functions -mstring-insns -nostdinc -I../include
++AR	=ar
++AS	=as --32
++LD	=ld -m elf_i386
++LDFLAGS	=
++CC	=gcc -m32 
++CFLAGS	=-g3 -O0 -fstrength-reduce -fomit-frame-pointer -fno-stack-protector \
++	-finline-functions -fno-builtin -nostdinc -I../include -w #-Wall 
+ CPP	=gcc -E -nostdinc -I../include
+ 
+ .c.s:
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/kernel/math/Makefile linux-0.12/kernel/math/Makefile
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/kernel/math/Makefile	1991-12-31 20:26:48.000000000 +0800
++++ linux-0.12/kernel/math/Makefile	2015-02-12 21:28:16.392581205 +0800
+@@ -6,13 +6,13 @@
+ # unless it's something special (ie not a .c file).
+ #
+ 
+-AR	=gar
+-AS	=gas
+-LD	=gld
+-LDFLAGS	=-s -x
+-CC	=gcc
+-CFLAGS	=-Wall -O -fstrength-reduce -fomit-frame-pointer -fcombine-regs \
+-	-finline-functions -mstring-insns -nostdinc -I../../include
++AR	=ar
++AS	=as --32
++LD	=ld -m elf_i386
++LDFLAGS	=
++CC	=gcc -m32
++CFLAGS	=-g3 -O0 -fstrength-reduce -fomit-frame-pointer -fno-stack-protector \
++	-finline-functions -fno-builtin -nostdinc -I../../include -w #-Wall 
+ CPP	=gcc -E -nostdinc -I../../include
+ 
+ .c.s:
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/kernel/sys_call.s linux-0.12/kernel/sys_call.s
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/kernel/sys_call.s	1992-01-07 05:10:59.000000000 +0800
++++ linux-0.12/kernel/sys_call.s	2015-02-12 21:51:42.120614615 +0800
+@@ -68,20 +68,20 @@
+  * Ok, I get parallel printer interrupts while using the floppy for some
+  * strange reason. Urgel. Now I just ignore them.
+  */
+-.globl _system_call,_sys_fork,_timer_interrupt,_sys_execve
+-.globl _hd_interrupt,_floppy_interrupt,_parallel_interrupt
+-.globl _device_not_available, _coprocessor_error
++.globl system_call,sys_fork,timer_interrupt,sys_execve
++.globl hd_interrupt,floppy_interrupt,parallel_interrupt
++.globl device_not_available, coprocessor_error
+ 
+-.align 2
++.align 4
+ bad_sys_call:
+ 	pushl $-ENOSYS
+ 	jmp ret_from_sys_call
+-.align 2
++.align 4
+ reschedule:
+ 	pushl $ret_from_sys_call
+-	jmp _schedule
+-.align 2
+-_system_call:
++	jmp schedule
++.align 4
++system_call:
+ 	push %ds
+ 	push %es
+ 	push %fs
+@@ -94,19 +94,19 @@
+ 	mov %dx,%es
+ 	movl $0x17,%edx		# fs points to local data space
+ 	mov %dx,%fs
+-	cmpl _NR_syscalls,%eax
++	cmpl NR_syscalls,%eax
+ 	jae bad_sys_call
+-	call _sys_call_table(,%eax,4)
++	call sys_call_table(,%eax,4)
+ 	pushl %eax
+ 2:
+-	movl _current,%eax
++	movl current,%eax
+ 	cmpl $0,state(%eax)		# state
+ 	jne reschedule
+ 	cmpl $0,counter(%eax)		# counter
+ 	je reschedule
+ ret_from_sys_call:
+-	movl _current,%eax
+-	cmpl _task,%eax			# task[0] cannot have signals
++	movl current,%eax
++	cmpl task,%eax			# task[0] cannot have signals
+ 	je 3f
+ 	cmpw $0x0f,CS(%esp)		# was old code segment supervisor ?
+ 	jne 3f
+@@ -122,7 +122,7 @@
+ 	movl %ebx,signal(%eax)
+ 	incl %ecx
+ 	pushl %ecx
+-	call _do_signal
++	call do_signal
+ 	popl %ecx
+ 	testl %eax, %eax
+ 	jne 2b		# see if we need to switch tasks, or do more signals
+@@ -136,8 +136,8 @@
+ 	pop %ds
+ 	iret
+ 
+-.align 2
+-_coprocessor_error:
++.align 4
++coprocessor_error:
+ 	push %ds
+ 	push %es
+ 	push %fs
+@@ -152,10 +152,10 @@
+ 	movl $0x17,%eax
+ 	mov %ax,%fs
+ 	pushl $ret_from_sys_call
+-	jmp _math_error
++	jmp math_error
+ 
+-.align 2
+-_device_not_available:
++.align 4
++device_not_available:
+ 	push %ds
+ 	push %es
+ 	push %fs
+@@ -173,22 +173,22 @@
+ 	clts				# clear TS so that we can use math
+ 	movl %cr0,%eax
+ 	testl $0x4,%eax			# EM (math emulation bit)
+-	je _math_state_restore
++	je math_state_restore
+ 	pushl %ebp
+ 	pushl %esi
+ 	pushl %edi
+ 	pushl $0		# temporary storage for ORIG_EIP
+-	call _math_emulate
++	call math_emulate
+ 	addl $4,%esp
+ 	popl %edi
+ 	popl %esi
+ 	popl %ebp
+ 	ret
+ 
+-.align 2
+-_timer_interrupt:
++.align 4
++timer_interrupt:
+ 	push %ds		# save ds,es and put kernel data space
+-	push %es		# into them. %fs is used by _system_call
++	push %es		# into them. %fs is used by system_call
+ 	push %fs
+ 	pushl $-1		# fill in -1 for orig_eax
+ 	pushl %edx		# we save %eax,%ecx,%edx as gcc doesn't
+@@ -200,27 +200,27 @@
+ 	mov %ax,%es
+ 	movl $0x17,%eax
+ 	mov %ax,%fs
+-	incl _jiffies
++	incl jiffies
+ 	movb $0x20,%al		# EOI to interrupt controller #1
+ 	outb %al,$0x20
+ 	movl CS(%esp),%eax
+ 	andl $3,%eax		# %eax is CPL (0 or 3, 0=supervisor)
+ 	pushl %eax
+-	call _do_timer		# 'do_timer(long CPL)' does everything from
++	call do_timer		# 'do_timer(long CPL)' does everything from
+ 	addl $4,%esp		# task switching to accounting ...
+ 	jmp ret_from_sys_call
+ 
+-.align 2
+-_sys_execve:
++.align 4
++sys_execve:
+ 	lea EIP(%esp),%eax
+ 	pushl %eax
+-	call _do_execve
++	call do_execve
+ 	addl $4,%esp
+ 	ret
+ 
+-.align 2
+-_sys_fork:
+-	call _find_empty_process
++.align 4
++sys_fork:
++	call find_empty_process
+ 	testl %eax,%eax
+ 	js 1f
+ 	push %gs
+@@ -228,11 +228,11 @@
+ 	pushl %edi
+ 	pushl %ebp
+ 	pushl %eax
+-	call _copy_process
++	call copy_process
+ 	addl $20,%esp
+ 1:	ret
+ 
+-_hd_interrupt:
++hd_interrupt:
+ 	pushl %eax
+ 	pushl %ecx
+ 	pushl %edx
+@@ -249,11 +249,11 @@
+ 	jmp 1f			# give port chance to breathe
+ 1:	jmp 1f
+ 1:	xorl %edx,%edx
+-	movl %edx,_hd_timeout
+-	xchgl _do_hd,%edx
++	movl %edx,hd_timeout
++	xchgl do_hd,%edx
+ 	testl %edx,%edx
+ 	jne 1f
+-	movl $_unexpected_hd_interrupt,%edx
++	movl $unexpected_hd_interrupt,%edx
+ 1:	outb %al,$0x20
+ 	call *%edx		# "interesting" way of handling intr.
+ 	pop %fs
+@@ -264,7 +264,7 @@
+ 	popl %eax
+ 	iret
+ 
+-_floppy_interrupt:
++floppy_interrupt:
+ 	pushl %eax
+ 	pushl %ecx
+ 	pushl %edx
+@@ -279,10 +279,10 @@
+ 	movb $0x20,%al
+ 	outb %al,$0x20		# EOI to interrupt controller #1
+ 	xorl %eax,%eax
+-	xchgl _do_floppy,%eax
++	xchgl do_floppy,%eax
+ 	testl %eax,%eax
+ 	jne 1f
+-	movl $_unexpected_floppy_interrupt,%eax
++	movl $unexpected_floppy_interrupt,%eax
+ 1:	call *%eax		# "interesting" way of handling intr.
+ 	pop %fs
+ 	pop %es
+@@ -292,7 +292,7 @@
+ 	popl %eax
+ 	iret
+ 
+-_parallel_interrupt:
++parallel_interrupt:
+ 	pushl %eax
+ 	movb $0x20,%al
+ 	outb %al,$0x20
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/lib/Makefile linux-0.12/lib/Makefile
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/lib/Makefile	1991-12-02 11:16:05.000000000 +0800
++++ linux-0.12/lib/Makefile	2015-02-12 21:29:14.520582587 +0800
+@@ -6,13 +6,13 @@
+ # unless it's something special (ie not a .c file).
+ #
+ 
+-AR	=gar
+-AS	=gas
+-LD	=gld
+-LDFLAGS	=-s -x
+-CC	=gcc
+-CFLAGS	=-Wall -O -fstrength-reduce -fomit-frame-pointer -fcombine-regs \
+-	-finline-functions -mstring-insns -nostdinc -I../include
++AR	=ar
++AS	=as --32
++LD	=ld -m elf_i386
++LDFLAGS	=
++CC	=gcc -m32
++CFLAGS	=-g3 -O0 -fstrength-reduce -fomit-frame-pointer -fno-stack-protector \
++	-finline-functions -fno-builtin -nostdinc -I../include -w #-Wall
+ CPP	=gcc -E -nostdinc -I../include
+ 
+ .c.s:
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/lib/malloc.c linux-0.12/lib/malloc.c
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/lib/malloc.c	1991-12-02 11:15:20.000000000 +0800
++++ linux-0.12/lib/malloc.c	2015-02-12 21:45:09.860605292 +0800
+@@ -153,7 +153,7 @@
+ 		free_bucket_desc = bdesc->next;
+ 		bdesc->refcnt = 0;
+ 		bdesc->bucket_size = bdir->size;
+-		bdesc->page = bdesc->freeptr = (void *) cp = get_free_page();
++		bdesc->page = bdesc->freeptr = (void *) (cp = get_free_page());
+ 		if (!cp)
+ 			panic("Out of memory in kernel malloc()");
+ 		/* Set up the chain of free objects */
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/Makefile linux-0.12/Makefile
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/Makefile	1992-01-13 03:48:56.000000000 +0800
++++ linux-0.12/Makefile	2015-02-12 22:00:51.244627665 +0800
+@@ -7,12 +7,12 @@
+ AS86	=as86 -0 -a
+ LD86	=ld86 -0
+ 
+-AS	=gas
+-LD	=gld
+-LDFLAGS	=-s -x -M
+-CC	=gcc $(RAMDISK)
+-CFLAGS	=-Wall -O -fstrength-reduce -fomit-frame-pointer \
+--fcombine-regs -mstring-insns
++AS	=as --32
++LD	=ld -m elf_i386
++LDFLAGS	= -Ttext 0 -e startup_32
++CC	=gcc -m32  $(RAMDISK)
++CFLAGS	=-g3 -O0 -fstrength-reduce -fomit-frame-pointer \
++-fno-stack-protector -fno-builtin -w #-Wall 
+ CPP	=cpp -nostdinc -Iinclude
+ 
+ #
+@@ -20,8 +20,8 @@
+ # This can be either FLOPPY, /dev/xxxx or empty, in which case the
+ # default of /dev/hd6 is used by 'build'.
+ #
+-ROOT_DEV=/dev/hd6
+-SWAP_DEV=/dev/hd2
++ROOT_DEV=0301 #/dev/hd6
++SWAP_DEV=0304 #/dev/hd2
+ 
+ ARCHIVES=kernel/kernel.o mm/mm.o fs/fs.o
+ DRIVERS =kernel/blk_drv/blk_drv.a kernel/chr_drv/chr_drv.a
+@@ -39,17 +39,25 @@
+ 
+ all:	Image
+ 
+-Image: boot/bootsect boot/setup tools/system tools/build
+-	tools/build boot/bootsect boot/setup tools/system $(ROOT_DEV) \
+-		$(SWAP_DEV) > Image
+-	sync
++#Image: boot/bootsect boot/setup tools/system tools/build
++#	tools/build boot/bootsect boot/setup tools/system $(ROOT_DEV) \
++#		$(SWAP_DEV) > Image
++#	sync
++
++Image: boot/bootsect boot/setup tools/system
++	@cp -f tools/system system.tmp
++	@strip system.tmp
++	@objcopy -O binary -R .note -R .comment system.tmp tools/kernel
++	@tools/build.sh boot/bootsect boot/setup tools/kernel Image $(ROOT_DEV) $(SWAP_DEV)
++	@rm system.tmp
++	@sync
+ 
+ disk: Image
+ 	dd bs=8192 if=Image of=/dev/PS0
+ 
+-tools/build: tools/build.c
+-	$(CC) $(CFLAGS) \
+-	-o tools/build tools/build.c
++#tools/build: tools/build.c
++#	$(CC) $(CFLAGS) \
++#	-o tools/build tools/build.c
+ 
+ boot/head.o: boot/head.s
+ 
+@@ -60,7 +68,9 @@
+ 	$(DRIVERS) \
+ 	$(MATH) \
+ 	$(LIBS) \
+-	-o tools/system > System.map
++	-o tools/system
++	@nm tools/system | grep -v '\(compiled\)\|\(\.o$$\)\|\( [aU] \)\|\(\.\.ng$$\)\|\(LASH[RL]DI\)'| sort > System.map
++	@objdump -S tools/system > system.S
+ 
+ kernel/math/math.a:
+ 	(cd kernel/math; make)
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/mm/Makefile linux-0.12/mm/Makefile
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/mm/Makefile	1992-01-13 03:49:22.000000000 +0800
++++ linux-0.12/mm/Makefile	2015-02-12 21:28:44.796581880 +0800
+@@ -1,9 +1,9 @@
+-CC	=gcc
+-CFLAGS	=-O -Wall -fstrength-reduce -fcombine-regs -fomit-frame-pointer \
+-	-finline-functions -nostdinc -I../include
+-AS	=gas
+-AR	=gar
+-LD	=gld
++CC	=gcc -m32
++CFLAGS	=-O0 -g3 -fstrength-reduce -fno-stack-protector -fno-builtin -fomit-frame-pointer \
++	-finline-functions -nostdinc -I../include -w #-Wall
++AS	=as --32
++AR	=ar
++LD	=ld -m elf_i386
+ CPP	=gcc -E -nostdinc -I../include
+ 
+ .c.o:
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/mm/memory.c linux-0.12/mm/memory.c
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/mm/memory.c	1992-01-14 06:57:04.000000000 +0800
++++ linux-0.12/mm/memory.c	2015-02-12 21:38:22.920595620 +0800
+@@ -42,7 +42,7 @@
+ unsigned long HIGH_MEMORY = 0;
+ 
+ #define copy_page(from,to) \
+-__asm__("cld ; rep ; movsl"::"S" (from),"D" (to),"c" (1024):"cx","di","si")
++__asm__("cld ; rep ; movsl"::"S" (from),"D" (to),"c" (1024))
+ 
+ unsigned char mem_map [ PAGING_PAGES ] = {0,};
+ 
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/mm/page.s linux-0.12/mm/page.s
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/mm/page.s	1991-10-02 22:16:30.000000000 +0800
++++ linux-0.12/mm/page.s	2015-02-12 21:52:36.936615917 +0800
+@@ -9,9 +9,9 @@
+  * the real work is done in mm.c
+  */
+ 
+-.globl _page_fault
++.globl page_fault
+ 
+-_page_fault:
++page_fault:
+ 	xchgl %eax,(%esp)
+ 	pushl %ecx
+ 	pushl %edx
+@@ -27,9 +27,9 @@
+ 	pushl %eax
+ 	testl $1,%eax
+ 	jne 1f
+-	call _do_no_page
++	call do_no_page
+ 	jmp 2f
+-1:	call _do_wp_page
++1:	call do_wp_page
+ 2:	addl $8,%esp
+ 	pop %fs
+ 	pop %es
+diff -uNr /home/weizi/Documents/linux/compress_source/linux-0.12/mm/swap.c linux-0.12/mm/swap.c
+--- /home/weizi/Documents/linux/compress_source/linux-0.12/mm/swap.c	1992-01-13 23:46:41.000000000 +0800
++++ linux-0.12/mm/swap.c	2015-02-12 22:03:10.736630981 +0800
+@@ -185,10 +185,11 @@
+ 		"rep ; stosl\n\t"
+ 		"movl %%edx,%%eax\n"
+ 		"1:"
++        "cld"
+ 		:"=a" (__res)
+ 		:"0" (0),"i" (LOW_MEM),"c" (PAGING_PAGES),
+ 		"D" (mem_map+PAGING_PAGES-1)
+-		:"di","cx","dx");
++		:"dx");
+ 	if (__res >= HIGH_MEMORY)
+ 		goto repeat;
+ 	if (!__res && swap_out())

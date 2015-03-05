@@ -1,0 +1,13 @@
+*.o
+*.a
+Image
+rootimage-0.12-hd
+system.S
+System.map
+tools/system
+tools/kernel
+boot/bootsect
+boot/bootsect.s
+boot/setup
+boot/setup.s
+kernel/chr_drv/keyboard.s
