@@ -14,6 +14,7 @@ Linux old kernel
 * a linux distribution: fedora, centos, debian, ubuntu and mint
 * some tools: gcc gdb qemu vi
 * a linux-0.11 hardware image file 'hdc-0.11.img' which also can be download from http://oldlinux.org/Linux.old/bochs, and put it in the root directory.
+* If want to install bochs, please refer my rep 'pintos'.
 
 ## Build
 ```bash
