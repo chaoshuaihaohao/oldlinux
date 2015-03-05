@@ -1,4 +1,7 @@
 #
+# indicate the Hardware Image file
+HDA_IMG = rootimage-0.12-hd
+
 # if you want the ram-disk device, define this to be the
 # size in blocks.
 #
@@ -136,6 +139,27 @@ dep:
 	(cd fs; make dep)
 	(cd kernel; make dep)
 	(cd mm; make dep)
+
+start:
+	@qemu-system-x86_64 -m 16M -boot a -fda Image -hda $(HDA_IMG)
+
+debug:
+	@echo $(OS)
+	@qemu-system-x86_64 -m 16M -boot a -fda Image -hda $(HDA_IMG) -s -S
+
+help:
+	@echo "<<<<This is the basic help info of linux-0.12>>>"
+	@echo ""
+	@echo "Usage:"
+	@echo "     make --generate a kernel floppy Image with a fs on hda1"
+	@echo "     make start -- start the kernel in qemu"
+	@echo "     make debug -- debug the kernel in qemu & gdb at port 1234"
+	@echo "     make clean -- clean the object files"
+	@echo "     make distclean -- only keep the source code files"
+	@echo ""
+	@echo "Note:"
+	@echo "     * You need to install the following basic tools:"
+	@echo "          ubuntu, qemu, build-essential, gcc, dd "
 
 ### Dependencies:
 init/main.o : init/main.c include/unistd.h include/sys/stat.h \

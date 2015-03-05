@@ -10,9 +10,9 @@ The [old Linux kernel source ver 0.11](http://www.oldlinux.org) run on Qemu of F
 
 ## Pre-requirement
 
-* a linux distribution: debian , ubuntu and mint are recommended
-* some tools: gcc gdb qemu
-* a linux-0.11 hardware image file: hdc-0.11.img, please download it from http://oldlinux.org/Linux.old/bochs, and put it in the root directory.
+* a linux distribution: fedora, centos, debian, ubuntu and mint
+* some tools: gcc gdb qemu vi
+* a linux-0.11 hardware image file 'hdc-0.11.img' which also can be download from http://oldlinux.org/Linux.old/bochs, and put it in the root directory.
 
 ## Build
 ```bash
