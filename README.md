@@ -5,6 +5,7 @@ Linux old kernel
 [A practical tour to the Linux Kernel](http://bootloader.wikidot.com/linux:kernel:tour)  
 [oldlinux.org readme](http://oldlinux.org/oldlinux/viewthread.php?tid=290)  
 [oldlinux.org ftp](http://oldlinux.org/Linux.old/)  
+[comment code version](https://github.com/karottc/linux-0.11)  
 
 ## Doc
 
