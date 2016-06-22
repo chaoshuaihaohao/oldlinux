@@ -2,7 +2,9 @@ Linux old kernel
 ================
 
 [The old Linux kernel source ver 0.11/0.12-0.96](http://www.oldlinux.org)  
-[A practical tour to the Linux Kernel](http://bootloader.wikidot.com/linux:kernel:tour)~~
+[A practical tour to the Linux Kernel](http://bootloader.wikidot.com/linux:kernel:tour)  
+[oldlinux.org readme](http://oldlinux.org/oldlinux/viewthread.php?tid=290)  
+[oldlinux.org ftp](http://oldlinux.org/Linux.old/)  
 
 ## Doc
 
