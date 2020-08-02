@@ -1,0 +1,27 @@
+uos@uos-PC:~/github/linux/scripts$ ./ver_linux 
+If some fields are empty or look unusual you may have an old version.
+Compare to the current minimal requirements in Documentation/Changes.
+
+Linux uos-PC 4.19.0-6-amd64 #1 SMP Uos 4.19.67-13eagle (2020-05-03) x86_64 GNU/Linux
+
+GNU Make                4.2.1
+Binutils                2.34
+Util-linux              2.33.1
+Mount                   2.33.1
+Module-init-tools       26
+E2fsprogs               1.44.5
+Jfsutils                1.1.15
+Reiserfsprogs           3.6.27
+Xfsprogs                4.20.0
+Bison                   3.3.2
+Flex                    2.6.4
+Linux C++ Library       6.0.25
+Linux C Library         2.28
+Dynamic linker (ldd)    2.28.8
+Procps                  3.3.15
+Net-tools               2.10
+Sh-utils                8.30
+Udev                    241
+Wireless-tools          30
+Modules Loaded          ac acpi_pad acpi_thermal_rel aesni_intel aes_x86_64 ahci ansi_cprng arc4 asus_nb_wmi asus_wireless asus_wmi async_memcpy async_pq async_raid6_recov async_tx async_xor ath10k_core ath10k_pci ath autofs4 battery binfmt_misc bluetooth bnep btbcm btintel btrfs btrtl btusb button ccm cfg80211 cmac coretemp crc16 crc32c_generic crc32c_intel crc32_pclmul crct10dif_pclmul cryptd crypto_simd ctr drbg drm drm_kms_helper ecb ecdh_generic efi_pstore efivarfs efivars evdev ext4 fat fscrypto fuse ghash_clmulni_intel glue_helper hid hid_generic hid_multitouch i2c_algo_bit i2c_dev i2c_hid i2c_i801 i915 idma64 int3400_thermal int3403_thermal int340x_thermal_zone intel_cstate intel_lpss intel_lpss_pci intel_pch_thermal intel_powerclamp intel_rapl intel_rapl_perf intel_soc_dts_iosf intel_uncore ip_tables irqbypass iTCO_vendor_support iTCO_wdt jbd2 joydev kvm kvm_intel libahci libata libcrc32c linear mac80211 mbcache md_mod media mei mei_me mincores multipath nls_ascii nls_cp437 pcc_cpufreq pcspkr processor_thermal_device raid0 raid10 raid1 raid456 raid6_pq rfcomm rfkill scsi_mod sd_mod serio_raw sg snd snd_compress snd_hda_codec snd_hda_codec_generic snd_hda_codec_hdmi snd_hda_core snd_hda_ext_core snd_hda_intel snd_hwdep snd_pcm snd_soc_acpi snd_soc_acpi_intel_match snd_soc_core snd_soc_skl snd_soc_skl_ipc snd_soc_sst_dsp snd_soc_sst_ipc snd_timer soundcore sparse_keymap spi_pxa2xx_platform thermal usb_common usbcore usbhid uvcvideo vfat vfs_monitor video videobuf2_common videobuf2_memops videobuf2_v4l2 videobuf2_vmalloc videodev wl wmi wmi_bmof x86_pkg_temp_thermal xhci_hcd xhci_pci xor x_tables xxhash zstd_compress zstd_decompress
+
