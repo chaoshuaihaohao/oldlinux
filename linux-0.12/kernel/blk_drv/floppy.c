@@ -267,7 +267,7 @@ static void rw_interrupt(void)
 	do_fd_request();
 }
 
-inline void setup_rw_floppy(void)
+static inline void setup_rw_floppy(void)
 {
 	setup_DMA();
 	do_floppy = rw_interrupt;

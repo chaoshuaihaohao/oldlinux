@@ -5,7 +5,7 @@
 global  divide_error,debug,nmi,int3,overflow,bounds,invalid_op
 global  double_fault,coprocessor_segment_overrun
 global  invalid_TSS,segment_not_present,stack_segment
-global  general_protection,coprocessor_error,irq13,reserved
+global  general_protection,irq13,reserved
 global  alignment_check
 
 extern do_overflow,do_invalid_op,do_coprocessor_segment_overrun
